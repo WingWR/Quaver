@@ -1,0 +1,110 @@
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #ffffff;
+  background: #000000;
+  font-family: "Sora", "Segoe UI Variable", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: #000000;
+}
+
+body {
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top left, rgba(29, 185, 84, 0.12), transparent 24%),
+    radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.04), transparent 18%),
+    linear-gradient(180deg, #0a0a0a 0%, #000000 100%);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+.scrollbar-brand {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.glass-surface {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.03), transparent 32%),
+    linear-gradient(180deg, rgba(22, 22, 22, 0.92), rgba(15, 15, 15, 0.72));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+@supports ((-webkit-backdrop-filter: blur(0)) or (backdrop-filter: blur(0))) {
+  .glass-surface {
+    -webkit-backdrop-filter: blur(26px);
+    backdrop-filter: blur(26px);
+  }
+}
+
+@keyframes agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(29, 185, 84, 0.28);
+  }
+
+  50% {
+    opacity: 0.68;
+    box-shadow: 0 0 0 8px rgba(29, 185, 84, 0);
+  }
+}
+
+.agent-ready-dot {
+  animation: agent-pulse 1.8s ease-in-out infinite;
+}
+
+.player-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: 3px;
+  height: 14px;
+  width: 14px;
+  border-radius: 9999px;
+  background: #1db954;
+  border: 3px solid #08110c;
+  box-shadow: 0 0 18px rgba(29, 185, 84, 0.28);
+}
+
+.player-slider::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  border-radius: 9999px;
+  background: #1db954;
+  border: 3px solid #08110c;
+  box-shadow: 0 0 18px rgba(29, 185, 84, 0.28);
+  transform: translateY(1px);
+}
+
+.player-slider::-webkit-slider-runnable-track,
+.player-slider::-moz-range-track {
+  background: transparent;
+}
+
+.player-slider::-moz-range-track {
+  height: 4px;
+}
