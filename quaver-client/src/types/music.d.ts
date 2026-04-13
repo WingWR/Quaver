@@ -1,3 +1,9 @@
+export type MusicSource = "backend" | "spotify";
+export type PlaybackSource = MusicSource;
+export type CanvasView = "browse" | "lyrics";
+export type WorkspaceView = "library" | "agent";
+export type RepeatMode = "off" | "context" | "track";
+
 export interface Track {
   id: string;
   title: string;
@@ -8,7 +14,7 @@ export interface Track {
   accent: string;
   mood: string;
   genres: string[];
-  source?: "mock" | "spotify";
+  source?: MusicSource;
   spotifyId?: string;
   spotifyUri?: string;
   spotifyUrl?: string;
@@ -22,7 +28,7 @@ export interface Playlist {
   cover: string;
   accent: string;
   tracks: Track[];
-  source?: "mock" | "spotify";
+  source?: MusicSource;
   spotifyId?: string;
   spotifyUri?: string;
   ownerName?: string;
