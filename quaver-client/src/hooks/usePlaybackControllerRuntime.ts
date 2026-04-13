@@ -1,3 +1,10 @@
+import { formatBackendError } from "../api/http";
+import {
+  addTrackToBackendPlaylist,
+  appendTrackToBackendQueue,
+  insertTrackNextInBackendQueue,
+} from "../features/library/api/client";
+import { useUiStore } from "../store/useUiStore";
 import type { Playlist, Track } from "../types/music";
 import { useQuaverStore } from "../store/useQuaverStore";
 import {
@@ -19,7 +26,7 @@ async function activateSpotifyElement() {
   }
 }
 
-export function usePlaybackController() {
+export function usePlaybackControllerRuntime() {
   const spotify = useQuaverStore((state) => state.spotify);
   const setQueue = useQuaverStore((state) => state.setQueue);
   const setCurrentTrackIndex = useQuaverStore((state) => state.setCurrentTrackIndex);
@@ -40,6 +47,7 @@ export function usePlaybackController() {
   const playbackSource = useQuaverStore((state) => state.playbackSource);
   const isShuffleEnabled = useQuaverStore((state) => state.isShuffleEnabled);
   const repeatMode = useQuaverStore((state) => state.repeatMode);
+  const pushNotice = useUiStore((state) => state.pushNotice);
 
   function getQueueIndex(track: Track) {
     return queue.findIndex(
@@ -135,7 +143,7 @@ export function usePlaybackController() {
 
   async function playPlaylistTrack(playlist: Playlist, index: number) {
     if (!spotify.isAuthenticated || !spotify.deviceId || playlist.source !== "spotify") {
-      setQueue(playlist.tracks, index, "mock");
+      setQueue(playlist.tracks, index, "backend");
       return;
     }
 
@@ -162,7 +170,7 @@ export function usePlaybackController() {
       .filter((uri): uri is string => Boolean(uri));
 
     if (!spotify.isAuthenticated || !spotify.deviceId || !spotifyUris.length) {
-      setQueue(tracks, startIndex, "mock");
+      setQueue(tracks, startIndex, "backend");
       return;
     }
 
@@ -224,8 +232,23 @@ export function usePlaybackController() {
     const existingIndex = getQueueIndex(track);
     insertTrackNextLocal(track);
 
-    // Spotify has no public API to insert a track as the next item in queue.
-    // Only append is officially supported, so avoid creating duplicates remotely.
+    if (playbackSource === "backend") {
+      try {
+        await insertTrackNextInBackendQueue({
+          trackId: track.id,
+        });
+      } catch (error) {
+        pushNotice({
+          message: formatBackendError(
+            error,
+            "队列后端暂未接入，当前只保留了界面层的插队状态。",
+          ),
+          variant: "warning",
+          dedupeKey: `queue-next-${track.id}`,
+        });
+      }
+    }
+
     if (
       existingIndex === -1 &&
       playbackSource === "spotify" &&
@@ -240,6 +263,23 @@ export function usePlaybackController() {
   async function queueTrackLater(track: Track) {
     if (getQueueIndex(track) >= 0) {
       return;
+    }
+
+    if (playbackSource === "backend") {
+      try {
+        await appendTrackToBackendQueue({
+          trackId: track.id,
+        });
+      } catch (error) {
+        pushNotice({
+          message: formatBackendError(
+            error,
+            "队列后端暂未接入，当前只保留了界面层的排队状态。",
+          ),
+          variant: "warning",
+          dedupeKey: `queue-append-${track.id}`,
+        });
+      }
     }
 
     if (
@@ -261,7 +301,21 @@ export function usePlaybackController() {
       return;
     }
 
-    addTrackToPlaylistLocal(playlist.id, track);
+    try {
+      await addTrackToBackendPlaylist(playlist.id, {
+        trackId: track.id,
+      });
+      addTrackToPlaylistLocal(playlist.id, track);
+    } catch (error) {
+      pushNotice({
+        message: formatBackendError(
+          error,
+          "歌单后端暂未接入，当前无法把歌曲写入歌单。",
+        ),
+        variant: "warning",
+        dedupeKey: `playlist-add-${playlist.id}-${track.id}`,
+      });
+    }
   }
 
   return {

@@ -9,7 +9,7 @@ interface MenuState {
   track: Track;
 }
 
-export default function TrackContextMenu({
+export default function TrackActionsMenu({
   menu,
   playlists,
   onClose,
@@ -102,19 +102,23 @@ export default function TrackContextMenu({
                 加入歌单
               </p>
               <div className="max-h-56 overflow-y-auto">
-                {playlists.map((playlist) => (
-                  <button
-                    key={playlist.id}
-                    type="button"
-                    onClick={() => {
-                      void onAddToPlaylist(playlist, menu.track);
-                      onClose();
-                    }}
-                    className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/84 transition hover:bg-white/[0.06] hover:text-white"
-                  >
-                    {playlist.name}
-                  </button>
-                ))}
+                {playlists.length ? (
+                  playlists.map((playlist) => (
+                    <button
+                      key={playlist.id}
+                      type="button"
+                      onClick={() => {
+                        void onAddToPlaylist(playlist, menu.track);
+                        onClose();
+                      }}
+                      className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/84 transition hover:bg-white/[0.06] hover:text-white"
+                    >
+                      {playlist.name}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-sm text-brand-grey">当前没有可写入的歌单</div>
+                )}
               </div>
             </div>
           </motion.div>

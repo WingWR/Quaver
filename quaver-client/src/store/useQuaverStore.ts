@@ -1,10 +1,14 @@
 import { create } from "zustand";
-import type { Playlist, Track } from "../types/music";
-import { mockPlaylists, mockQueue } from "../utils/mockData";
-
-type PlaybackSource = "mock" | "spotify";
-type CanvasView = "browse" | "lyrics";
-type RepeatMode = "off" | "context" | "track";
+import type { LibraryBootstrapResponse } from "../features/library/api/types";
+import type {
+  CanvasView,
+  MusicSource,
+  PlaybackSource,
+  Playlist,
+  RepeatMode,
+  Track,
+  WorkspaceView,
+} from "../types/music";
 
 interface SpotifyState {
   isConfigured: boolean;
@@ -14,6 +18,12 @@ interface SpotifyState {
   userName: string | null;
   error: string | null;
   requiresPremium: boolean;
+}
+
+interface ResourceState {
+  status: "idle" | "loading" | "ready" | "error";
+  message: string | null;
+  lastLoadedAt: string | null;
 }
 
 interface PlaybackSyncPayload {
@@ -34,23 +44,24 @@ interface QuaverStore {
   selectedPlaylistId: string;
   currentTrackIndex: number;
   isPlaying: boolean;
-  isAgentActive: boolean;
-  agentQuery: string;
+  agentDraft: string;
   progress: number;
   volume: number;
   canvasView: CanvasView;
+  workspaceView: WorkspaceView;
   playbackSource: PlaybackSource;
   isShuffleEnabled: boolean;
   repeatMode: RepeatMode;
   spotify: SpotifyState;
-  setPlaylists: (playlists: Playlist[]) => void;
+  library: ResourceState;
+  replacePlaylistsBySource: (source: MusicSource, playlists: Playlist[]) => void;
   updatePlaylistTracks: (playlistId: string, tracks: Track[]) => void;
   addTrackToPlaylist: (playlistId: string, track: Track) => void;
   setSelectedPlaylist: (playlistId: string) => void;
   setQueue: (queue: Track[], startIndex?: number, playbackSource?: PlaybackSource) => void;
   syncPlayback: (payload: PlaybackSyncPayload) => void;
   setCurrentTrackIndex: (index: number) => void;
-  setAgentQuery: (query: string) => void;
+  setAgentDraft: (query: string) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   togglePlayback: () => void;
   setProgress: (progress: number) => void;
@@ -62,7 +73,9 @@ interface QuaverStore {
   toggleShuffle: () => void;
   cycleRepeatMode: () => void;
   setCanvasView: (view: CanvasView) => void;
-  toggleAgent: (nextState?: boolean) => void;
+  setWorkspaceView: (view: WorkspaceView) => void;
+  hydrateBackendLibrary: (payload: LibraryBootstrapResponse) => void;
+  setLibraryState: (state: Partial<ResourceState>) => void;
   setSpotifyState: (state: Partial<SpotifyState>) => void;
 }
 
@@ -116,6 +129,40 @@ function normalizeQueue(queue: Track[], desiredIndex = 0) {
   };
 }
 
+function normalizeSource(source?: MusicSource): MusicSource {
+  return source === "spotify" ? "spotify" : "backend";
+}
+
+function mergePlaylistsBySource(
+  currentPlaylists: Playlist[],
+  source: MusicSource,
+  incomingPlaylists: Playlist[],
+) {
+  const nextPlaylists = incomingPlaylists.map((playlist) => ({
+    ...playlist,
+    source,
+  }));
+  const otherPlaylists = currentPlaylists.filter(
+    (playlist) => normalizeSource(playlist.source) !== source,
+  );
+
+  return source === "backend"
+    ? [...nextPlaylists, ...otherPlaylists]
+    : [...otherPlaylists, ...nextPlaylists];
+}
+
+function resolveSelectedPlaylistId(playlists: Playlist[], candidates: Array<string | undefined>) {
+  const availableIds = new Set(playlists.map((playlist) => playlist.id));
+
+  for (const candidate of candidates) {
+    if (candidate && availableIds.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return playlists[0]?.id ?? "";
+}
+
 const initialSpotifyState: SpotifyState = {
   isConfigured: false,
   isAuthenticated: false,
@@ -124,6 +171,12 @@ const initialSpotifyState: SpotifyState = {
   userName: null,
   error: null,
   requiresPremium: false,
+};
+
+const initialResourceState: ResourceState = {
+  status: "idle",
+  message: null,
+  lastLoadedAt: null,
 };
 
 function nextRepeatMode(mode: RepeatMode): RepeatMode {
@@ -169,29 +222,34 @@ function getNextTrackIndex(
 }
 
 export const useQuaverStore = create<QuaverStore>((set) => ({
-  playlists: mockPlaylists,
-  queue: mockQueue,
+  playlists: [],
+  queue: [],
   queueRevision: 0,
-  selectedPlaylistId: mockPlaylists[0]?.id ?? "",
+  selectedPlaylistId: "",
   currentTrackIndex: 0,
-  isPlaying: true,
-  isAgentActive: false,
-  agentQuery: "",
-  progress: 78,
+  isPlaying: false,
+  agentDraft: "",
+  progress: 0,
   volume: 72,
   canvasView: "browse",
-  playbackSource: "mock",
+  workspaceView: "library",
+  playbackSource: "backend",
   isShuffleEnabled: false,
   repeatMode: "off",
   spotify: initialSpotifyState,
-  setPlaylists: (playlists) =>
-    set((state) => ({
-      playlists,
-      selectedPlaylistId:
-        playlists.find((playlist) => playlist.id === state.selectedPlaylistId)?.id ??
-        playlists[0]?.id ??
-        "",
-    })),
+  library: initialResourceState,
+  replacePlaylistsBySource: (source, incomingPlaylists) =>
+    set((state) => {
+      const playlists = mergePlaylistsBySource(state.playlists, source, incomingPlaylists);
+
+      return {
+        playlists,
+        selectedPlaylistId: resolveSelectedPlaylistId(playlists, [
+          state.selectedPlaylistId,
+          incomingPlaylists[0]?.id,
+        ]),
+      };
+    }),
   updatePlaylistTracks: (playlistId, tracks) =>
     set((state) => ({
       playlists: state.playlists.map((playlist) =>
@@ -207,8 +265,13 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
           : playlist,
       ),
     })),
-  setSelectedPlaylist: (selectedPlaylistId) => set({ selectedPlaylistId, canvasView: "browse" }),
-  setQueue: (queue, startIndex = 0, playbackSource = "mock") =>
+  setSelectedPlaylist: (selectedPlaylistId) =>
+    set({
+      selectedPlaylistId,
+      canvasView: "browse",
+      workspaceView: "library",
+    }),
+  setQueue: (queue, startIndex = 0, playbackSource = "backend") =>
     set((state) => {
       const normalized = normalizeQueue(queue, startIndex);
       return {
@@ -245,9 +308,12 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
       progress: 0,
       isPlaying: state.queue.length > 0,
     })),
-  setAgentQuery: (agentQuery) => set({ agentQuery }),
+  setAgentDraft: (agentDraft) => set({ agentDraft }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
-  togglePlayback: () => set((state) => ({ isPlaying: !state.isPlaying })),
+  togglePlayback: () =>
+    set((state) => ({
+      isPlaying: state.queue.length ? !state.isPlaying : false,
+    })),
   setProgress: (progress) => set({ progress }),
   setVolume: (volume) => set({ volume }),
   playNext: () =>
@@ -343,9 +409,39 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
       repeatMode: nextRepeatMode(state.repeatMode),
     })),
   setCanvasView: (canvasView) => set({ canvasView }),
-  toggleAgent: (nextState) =>
+  setWorkspaceView: (workspaceView) => set({ workspaceView }),
+  hydrateBackendLibrary: (payload) =>
+    set((state) => {
+      const playlists = mergePlaylistsBySource(state.playlists, "backend", payload.playlists);
+      const playback = payload.playback;
+      const normalizedPlayback = playback
+        ? normalizeQueue(playback.queue, playback.currentTrackIndex)
+        : null;
+
+      return {
+        playlists,
+        selectedPlaylistId: resolveSelectedPlaylistId(playlists, [
+          payload.selectedPlaylistId,
+          state.selectedPlaylistId,
+        ]),
+        queue: normalizedPlayback ? normalizedPlayback.queue : state.queue,
+        currentTrackIndex: normalizedPlayback
+          ? normalizedPlayback.currentTrackIndex
+          : state.currentTrackIndex,
+        isPlaying: playback ? playback.isPlaying ?? false : state.isPlaying,
+        progress: playback ? playback.progress ?? 0 : state.progress,
+        volume: playback ? playback.volume ?? state.volume : state.volume,
+        playbackSource: playback ? playback.playbackSource ?? "backend" : state.playbackSource,
+        isShuffleEnabled: playback
+          ? playback.isShuffleEnabled ?? state.isShuffleEnabled
+          : state.isShuffleEnabled,
+        repeatMode: playback ? playback.repeatMode ?? state.repeatMode : state.repeatMode,
+        queueRevision: playback ? state.queueRevision + 1 : state.queueRevision,
+      };
+    }),
+  setLibraryState: (library) =>
     set((state) => ({
-      isAgentActive: typeof nextState === "boolean" ? nextState : !state.isAgentActive,
+      library: { ...state.library, ...library },
     })),
   setSpotifyState: (spotify) =>
     set((state) => ({
