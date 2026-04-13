@@ -73,7 +73,7 @@ export function useSpotifyBootstrap() {
   const playlists = useQuaverStore((state) => state.playlists);
   const selectedPlaylistId = useQuaverStore((state) => state.selectedPlaylistId);
   const spotify = useQuaverStore((state) => state.spotify);
-  const setPlaylists = useQuaverStore((state) => state.setPlaylists);
+  const replacePlaylistsBySource = useQuaverStore((state) => state.replacePlaylistsBySource);
   const updatePlaylistTracks = useQuaverStore((state) => state.updatePlaylistTracks);
   const setSpotifyState = useQuaverStore((state) => state.setSpotifyState);
   const syncPlayback = useQuaverStore((state) => state.syncPlayback);
@@ -116,9 +116,7 @@ export function useSpotifyBootstrap() {
           setSpotifyState({
             userName: profile.display_name ?? "Spotify listener",
           });
-          if (spotifyPlaylists.length) {
-            setPlaylists(spotifyPlaylists);
-          }
+          replacePlaylistsBySource("spotify", spotifyPlaylists);
         });
       } catch (error) {
         if (cancelled) {
@@ -139,7 +137,7 @@ export function useSpotifyBootstrap() {
     return () => {
       cancelled = true;
     };
-  }, [setPlaylists, setSpotifyState]);
+  }, [replacePlaylistsBySource, setSpotifyState]);
 
   useEffect(() => {
     if (!spotify.accessToken || !isSpotifyConfigured()) {

@@ -102,7 +102,6 @@ export default function PlaybackControls({
   repeatMode,
   onToggleShuffle,
   onCycleRepeatMode,
-  isAgentActive,
 }: {
   track?: Track;
   progress: number;
@@ -115,18 +114,12 @@ export default function PlaybackControls({
   repeatMode: "off" | "context" | "track";
   onToggleShuffle: () => void;
   onCycleRepeatMode: () => void;
-  isAgentActive: boolean;
 }) {
   const duration = track?.duration ?? 0;
   const progressPercent = duration ? (progress / duration) * 100 : 0;
 
   return (
-    <motion.div
-      layout
-      className={`flex h-full min-w-0 flex-1 flex-col justify-center px-4 transition-all duration-300 ${
-        isAgentActive ? "max-w-[34rem]" : "max-w-[42rem]"
-      }`}
-    >
+    <motion.div layout className="flex h-full min-w-0 max-w-[42rem] flex-1 flex-col justify-center px-4">
       <div className="flex items-center justify-center gap-3">
         <IconButton onClick={onToggleShuffle} isActive={isShuffleEnabled}>
           <ShuffleIcon />

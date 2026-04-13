@@ -1,9 +1,8 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useEffect } from "react";
-import { useAgent } from "../../hooks/useAgent";
-import { usePlaybackController } from "../../hooks/usePlaybackController";
+import TrackSearchBar from "../../features/search/components/TrackSearchBar";
+import { usePlaybackControllerRuntime } from "../../hooks/usePlaybackControllerRuntime";
 import { useQuaverStore } from "../../store/useQuaverStore";
-import AgentSearchContainer from "./AgentSearchContainer";
 import PlaybackControls from "./PlaybackControls";
 import TrackInfo from "./TrackInfo";
 import VolumeControl from "./VolumeControl";
@@ -15,27 +14,23 @@ export default function PlayerBar() {
   const isPlaying = useQuaverStore((state) => state.isPlaying);
   const progress = useQuaverStore((state) => state.progress);
   const volume = useQuaverStore((state) => state.volume);
-  const isAgentActive = useQuaverStore((state) => state.isAgentActive);
-  const toggleAgent = useQuaverStore((state) => state.toggleAgent);
   const setProgress = useQuaverStore((state) => state.setProgress);
   const playbackSource = useQuaverStore((state) => state.playbackSource);
   const setCanvasView = useQuaverStore((state) => state.setCanvasView);
-  const { agentQuery, preview, handleInput, submitAgentQuery } = useAgent();
   const {
     togglePlayback,
     playNext,
     playPrevious,
     seek,
     updateVolume,
-    playTrackList,
     isShuffleEnabled,
     repeatMode,
     toggleShuffleMode,
     cycleRepeatMode,
-  } = usePlaybackController();
+  } = usePlaybackControllerRuntime();
 
   useEffect(() => {
-    if (!isPlaying || !currentTrack || playbackSource !== "mock") {
+    if (!isPlaying || !currentTrack || playbackSource !== "backend") {
       return;
     }
 
@@ -52,13 +47,6 @@ export default function PlayerBar() {
 
     return () => window.clearInterval(timer);
   }, [currentTrack, isPlaying, playbackSource, playNext, progress, setProgress]);
-
-  async function applyAgentResult(query?: string) {
-    const response = submitAgentQuery(query);
-    if (response.tracks.length) {
-      await playTrackList(response.tracks, 0);
-    }
-  }
 
   return (
     <motion.footer
@@ -87,7 +75,6 @@ export default function PlayerBar() {
             repeatMode={repeatMode}
             onToggleShuffle={() => void toggleShuffleMode()}
             onCycleRepeatMode={() => void cycleRepeatMode()}
-            isAgentActive={isAgentActive}
           />
         </div>
 
@@ -95,23 +82,10 @@ export default function PlayerBar() {
           layout
           className="flex w-full flex-wrap items-center justify-between gap-4 lg:flex-[1.05] lg:flex-nowrap lg:justify-end"
         >
-          <AnimatePresence initial={false}>
-            {!isAgentActive ? (
-              <VolumeControl
-                key="volume"
-                volume={volume}
-                onVolumeChange={(nextVolume) => void updateVolume(nextVolume)}
-              />
-            ) : null}
-          </AnimatePresence>
-
-          <AgentSearchContainer
-            isActive={isAgentActive}
-            agentQuery={agentQuery}
-            preview={preview}
-            onToggle={toggleAgent}
-            onChange={handleInput}
-            onSubmit={applyAgentResult}
+          <TrackSearchBar />
+          <VolumeControl
+            volume={volume}
+            onVolumeChange={(nextVolume) => void updateVolume(nextVolume)}
           />
         </motion.div>
       </motion.div>
