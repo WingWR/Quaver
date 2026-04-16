@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: quaver-server
+  config:
+    import: optional:file:./application-local.yml
+  datasource:
+    url: ${QUAVER_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${QUAVER_MYSQL_USERNAME:root}
+    password: ${QUAVER_MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${QUAVER_REDIS_HOST:127.0.0.1}
+      port: ${QUAVER_REDIS_PORT:6379}
+      password: ${QUAVER_REDIS_PASSWORD:}
+      database: ${QUAVER_REDIS_DATABASE:0}
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:sql/schema.sql
+
+server:
+  port: ${QUAVER_SERVER_PORT:8080}
+  servlet:
+    context-path: /api
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: input
+
+quaver:
+  frontend:
+    base-url: ${QUAVER_FRONTEND_BASE_URL:http://localhost:5173}
+  security:
+    backend-api-key: ${QUAVER_BACKEND_API_KEY:}
+    agent-api-key: ${QUAVER_AGENT_API_KEY:}
+  app:
+    default-user-id: ${QUAVER_DEFAULT_USER_ID:demo-user}
+    default-username: ${QUAVER_DEFAULT_USERNAME:Demo Listener}
+    default-email: ${QUAVER_DEFAULT_EMAIL:demo-user@quaver.local}
+  ai:
+    api-key: ${QUAVER_AI_API_KEY:}
+    model: ${QUAVER_AI_MODEL:gpt-4.1-mini}
+    base-url: ${QUAVER_AI_BASE_URL:https://api.openai.com/v1}
+  spotify:
+    enabled: ${QUAVER_SPOTIFY_ENABLED:false}
+    client-id: ${QUAVER_SPOTIFY_CLIENT_ID:}
+    client-secret: ${QUAVER_SPOTIFY_CLIENT_SECRET:}
+    redirect-uri: ${QUAVER_SPOTIFY_REDIRECT_URI:http://localhost:8080/api/spotify/auth/callback}
+    developer-account: ${QUAVER_SPOTIFY_DEVELOPER_ACCOUNT:}
+    default-device-id: ${QUAVER_SPOTIFY_DEVICE_ID:}
+    scopes:
+      - user-read-private
+      - user-read-email
+      - user-read-playback-state
+      - user-read-currently-playing
+      - user-modify-playback-state
+      - playlist-read-private
+      - playlist-modify-private
+      - playlist-modify-public

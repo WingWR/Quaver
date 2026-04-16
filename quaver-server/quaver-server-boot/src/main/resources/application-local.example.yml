@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: your-password
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password:
+      database: 0
+
+quaver:
+  frontend:
+    base-url: http://localhost:5173
+  security:
+    backend-api-key:
+    agent-api-key:
+  app:
+    default-user-id: demo-user
+    default-username: Demo Listener
+    default-email: demo-user@quaver.local
+  ai:
+    api-key: your-openai-api-key
+    model: gpt-4.1-mini
+    base-url: https://api.openai.com/v1
+  spotify:
+    enabled: true
+    client-id: your-spotify-client-id
+    client-secret: your-spotify-client-secret
+    redirect-uri: http://localhost:8080/api/spotify/auth/callback
+    developer-account: your-developer-account-name
+    default-device-id:
