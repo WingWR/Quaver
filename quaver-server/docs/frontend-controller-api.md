@@ -1,306 +1,235 @@
-# Frontend Controller API
+﻿# Quaver Frontend Backend Contract
 
-This document is the current frontend integration contract for backend controllers in `agentmusic-backend`.
-
-Update rule:
-
-- every controller endpoint change must update this document in the same change set
-
-Base URL during local development:
+Base URL in local development:
 
 ```text
-http://localhost:8080
+http://localhost:8080/api
 ```
 
-## Agent API
+## Library Module
 
-### `POST /api/agent/chat`
+### `GET /library/bootstrap`
 
-Request body:
-
-```json
-{
-  "userId": "demo-user",
-  "message": "给我来点轻松的粤语歌，然后直接播放",
-  "voiceInput": false
-}
-```
+Returns the backend-managed library snapshot consumed by `useLibraryBootstrap`.
 
 Response shape:
 
 ```json
 {
-  "reply": {
-    "id": "message-id",
-    "role": "AGENT",
-    "message": "string",
-    "metadata": {},
-    "createdAt": "2026-03-25T20:00:00"
-  },
-  "session": {
-    "sessionId": "session-id",
-    "currentTrackId": "track-id",
-    "currentPlaylistId": "playlist-id",
-    "currentTrackIndex": 0,
-    "currentPositionMs": 0,
-    "isPlaying": true,
-    "playbackMode": "SHUFFLE",
-    "deviceId": "device-id",
-    "lastUpdated": "2026-03-25T20:00:00"
-  },
-  "recommendedPlaylists": [
+  "playlists": [
     {
-      "id": "playlist-id",
-      "name": "playlist name",
-      "version": 1,
-      "createdAt": "2026-03-25T20:00:00",
-      "tracks": []
+      "id": "playlist-demo-user-default",
+      "name": "Backend Favorites",
+      "description": "Your backend-managed playlist.",
+      "cover": "data:image/svg+xml,...",
+      "accent": "#1DB954",
+      "tracks": [],
+      "source": "backend",
+      "spotifyId": null,
+      "spotifyUri": null,
+      "ownerName": null
     }
-  ]
-}
-```
-
-### `GET /api/agent/history/{userId}?limit=20`
-
-- returns `ChatMessageDto[]`
-
-### `GET /api/agent/runtime-status`
-
-Response shape:
-
-```json
-{
-  "liveLlmEnabledConfigured": true,
-  "openAiKeyPresent": true,
-  "openAiModelId": "gpt-4o",
-  "liveLlmAvailable": true
-}
-```
-
-## Playlist API
-
-### `GET /api/playlists/{userId}?limit=10`
-
-- returns `PlaylistDto[]`
-
-### `POST /api/playlists/{userId}`
-
-Request body:
-
-```json
-{
-  "name": "Late Night Mix",
-  "tracks": [
-    {
-      "trackId": "track-id",
-      "title": "Song A",
-      "artistId": "artist-id",
-      "albumName": "Album A",
-      "albumId": "album-id",
-      "durationMs": 180000,
-      "previewUrl": null,
-      "albumImageUrl": null
-    }
-  ]
-}
-```
-
-- returns `PlaylistDto`
-
-## Playback API
-
-### `GET /api/playback/{userId}/session`
-
-- returns `Optional<PlaybackSessionDto>`
-
-### `PUT /api/playback/{userId}/session`
-
-Request body:
-
-```json
-{
-  "sessionId": "session-id",
-  "currentTrackId": "track-id",
-  "currentPlaylistId": "playlist-id",
-  "currentTrackIndex": 0,
-  "currentPositionMs": 12500,
-  "isPlaying": true,
-  "playbackMode": "SEQUENTIAL",
-  "deviceId": "device-id"
-}
-```
-
-- returns `PlaybackSessionDto`
-
-### `POST /api/playback/{userId}/play`
-
-Request body:
-
-```json
-{
-  "trackId": "track-id",
-  "playlistId": "playlist-id",
-  "trackIndex": 0,
-  "deviceId": "device-id",
-  "playbackMode": "SEQUENTIAL"
-}
-```
-
-- returns `PlaybackSessionDto`
-
-### `POST /api/playback/{userId}/pause`
-
-Request body:
-
-```json
-{
-  "deviceId": "device-id"
-}
-```
-
-- returns `PlaybackSessionDto`
-
-### `POST /api/playback/{userId}/next`
-
-Request body:
-
-```json
-{
-  "deviceId": "device-id"
-}
-```
-
-- returns `PlaybackSessionDto`
-
-### `POST /api/playback/{userId}/previous`
-
-Request body:
-
-```json
-{
-  "deviceId": "device-id"
-}
-```
-
-- returns `PlaybackSessionDto`
-
-### `POST /api/playback/{userId}/seek`
-
-Request body:
-
-```json
-{
-  "positionMs": 12500,
-  "deviceId": "device-id"
-}
-```
-
-- returns `PlaybackSessionDto`
-
-### `POST /api/playback/{userId}/mode`
-
-Request body:
-
-```json
-{
-  "playbackMode": "SHUFFLE",
-  "deviceId": "device-id"
-}
-```
-
-- returns `PlaybackSessionDto`
-
-### `POST /api/playback/{userId}/sync`
-
-- returns `Optional<PlaybackSessionDto>`
-
-## Music Query API
-
-### `GET /api/music/tracks/{trackId}`
-
-- returns `Optional<TrackDto>`
-
-### `GET /api/music/artists/{artistId}`
-
-- returns `Optional<ArtistDto>`
-
-### `GET /api/music/search/tracks?q={query}&limit=10`
-
-- returns `TrackDto[]`
-
-## Spotify Bridge Auth API
-
-### `GET /api/auth/spotify/login`
-
-- redirects browser to Spotify authorization URL
-
-### `GET /api/auth/spotify/callback?code=...&state=...`
-
-- returns `SpotifyBridgeAuthStatusDto`
-
-### `GET /api/auth/spotify/status`
-
-Response shape:
-
-```json
-{
-  "enabled": true,
-  "authorized": true,
-  "systemUserId": "bridge-user",
-  "redirectUri": "http://127.0.0.1:8080/api/auth/spotify/callback",
-  "scopes": [
-    "user-read-playback-state",
-    "user-modify-playback-state"
   ],
-  "expiresAt": "2026-03-25T20:00:00Z"
+  "selectedPlaylistId": "playlist-demo-user-default",
+  "playback": {
+    "queue": [],
+    "currentTrackIndex": 0,
+    "isPlaying": false,
+    "progress": 0,
+    "volume": 72,
+    "playbackSource": "backend",
+    "isShuffleEnabled": false,
+    "repeatMode": "off"
+  },
+  "serverTime": "2026-04-16T19:00:00"
 }
 ```
 
-## DTO Notes
+### `POST /library/queue`
 
-### `TrackDto`
+Appends a track to the backend queue.
 
-- `trackId`
+Request body:
+
+```json
+{
+  "trackId": "spotify-track-2takcwOaAZWiXQijPHIx7B"
+}
+```
+
+### `POST /library/queue/next`
+
+Inserts a track right after the current queue index.
+
+Request body:
+
+```json
+{
+  "trackId": "spotify-track-2takcwOaAZWiXQijPHIx7B"
+}
+```
+
+### `POST /library/playlists/{playlistId}/tracks`
+
+Adds a track into a backend-managed playlist.
+
+Request body:
+
+```json
+{
+  "trackId": "spotify-track-2takcwOaAZWiXQijPHIx7B"
+}
+```
+
+## Agent Module
+
+### `GET /agent/conversations/default`
+
+Returns the default conversation for the configured Quaver default user.
+
+### `POST /agent/conversations`
+
+Creates a conversation.
+
+Request body:
+
+```json
+{
+  "title": "Quaver Agent Session",
+  "model": "gpt-4.1-mini",
+  "spotifyDeveloperAccount": "developer-account",
+  "metadata": {
+    "workspace": "agent"
+  }
+}
+```
+
+### `POST /agent/conversations/{conversationId}/messages`
+
+Stores the user message, parses a lightweight command intent, and returns a persisted assistant reply plus operation history.
+
+Request body:
+
+```json
+{
+  "content": "给我播放 chill 粤语歌",
+  "model": "gpt-4.1-mini",
+  "spotifyDeveloperAccount": "developer-account",
+  "metadata": {
+    "workspace": "agent"
+  }
+}
+```
+
+### `POST /agent/search/tracks`
+
+Natural-language track search endpoint used by `TrackSearchBar`.
+
+Request body:
+
+```json
+{
+  "query": "粤语 chill",
+  "model": "gpt-4.1-mini",
+  "limit": 8,
+  "selectedPlaylistId": "playlist-demo-user-default",
+  "playlistIds": [
+    "playlist-demo-user-default"
+  ],
+  "queueTrackIds": [],
+  "spotifyDeveloperAccount": "developer-account",
+  "metadata": {
+    "scope": "music_search",
+    "workspace": "player_bar"
+  }
+}
+```
+
+Response shape:
+
+```json
+{
+  "query": "粤语 chill",
+  "tracks": [],
+  "total": 0,
+  "model": "gpt-4.1-mini",
+  "requestId": "uuid",
+  "status": "empty",
+  "tookMs": 16
+}
+```
+
+### `GET /agent/runtime-status`
+
+Returns whether AI and Spotify bridge runtime prerequisites are configured.
+
+## Spotify Module
+
+### Auth
+
+- `GET /spotify/auth/login`
+- `GET /spotify/auth/callback?code=...&state=...`
+- `GET /spotify/auth/status`
+
+### Catalog
+
+- `GET /spotify/tracks/search?q={query}&limit=8`
+- `GET /spotify/tracks/{trackId}`
+
+### Playback
+
+- `GET /spotify/playback/state`
+- `POST /spotify/playback/play`
+- `POST /spotify/playback/pause`
+- `POST /spotify/playback/next`
+- `POST /spotify/playback/previous`
+- `POST /spotify/playback/seek`
+- `POST /spotify/playback/shuffle`
+- `POST /spotify/playback/repeat`
+- `POST /spotify/playback/queue`
+- `POST /spotify/playback/playlists/{playlistId}/tracks`
+
+These endpoints use the backend-held Spotify bridge authorization, not browser-side Spotify tokens.
+
+## Shared Model Notes
+
+### Track
+
+- `id`
 - `title`
-- `artistId`
-- `albumName`
-- `albumId`
-- `durationMs`
-- `previewUrl`
-- `albumImageUrl`
+- `artist`
+- `album`
+- `duration`
+- `artwork`
+- `accent`
+- `mood`
+- `genres`
+- `source`
+- `spotifyId`
+- `spotifyUri`
+- `spotifyUrl`
+- `lyrics`
 
-### `ArtistDto`
-
-- `artistId`
-- `name`
-- `bio`
-- `imageUrl`
-- `followers`
-
-### `PlaybackSessionDto`
-
-- `sessionId`
-- `currentTrackId`
-- `currentPlaylistId`
-- `currentTrackIndex`
-- `currentPositionMs`
-- `isPlaying`
-- `playbackMode`
-- `deviceId`
-- `lastUpdated`
-
-### `ChatMessageDto`
-
-- `id`
-- `role`
-- `message`
-- `metadata`
-- `createdAt`
-
-### `PlaylistDto`
+### Playlist
 
 - `id`
 - `name`
-- `version`
-- `createdAt`
+- `description`
+- `cover`
+- `accent`
 - `tracks`
+- `source`
+- `spotifyId`
+- `spotifyUri`
+- `ownerName`
+
+### PlaybackState
+
+- `queue`
+- `currentTrackIndex`
+- `isPlaying`
+- `progress`
+- `volume`
+- `playbackSource`
+- `isShuffleEnabled`
+- `repeatMode`
