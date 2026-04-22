@@ -178,6 +178,25 @@ public class DefaultLibraryService implements LibraryService {
 
     @Override
     @Transactional
+    public PlaybackStateView updatePlaybackState(Integer currentTrackIndex, Boolean isPlaying, Integer progress, Integer volume,
+                                                 PlaybackSource playbackSource, Boolean isShuffleEnabled, RepeatMode repeatMode) {
+        PlaybackStateView currentState = getPlaybackStateOrDefault();
+        return persistPlaybackState(
+                currentState.queue(),
+                currentTrackIndex == null ? currentState.currentTrackIndex() : currentTrackIndex,
+                isPlaying == null ? currentState.isPlaying() : isPlaying,
+                progress == null ? currentState.progress() : Math.max(progress, 0),
+                volume == null ? currentState.volume() : clampVolume(volume),
+                playbackSource == null ? currentState.playbackSource() : playbackSource,
+                isShuffleEnabled == null ? currentState.isShuffleEnabled() : isShuffleEnabled,
+                repeatMode == null ? currentState.repeatMode() : repeatMode,
+                null,
+                currentState
+        );
+    }
+
+    @Override
+    @Transactional
     public TrackView cacheTrack(TrackView track) {
         TrackEntity entity = trackMapper.selectById(track.id());
         if (entity == null) {
@@ -192,11 +211,11 @@ public class DefaultLibraryService implements LibraryService {
         entity.setAccent(track.accent());
         entity.setMood(track.mood());
         entity.setGenres(track.genres());
-        entity.setSource(track.source().getValue());
+        entity.setSource((track.source() == null ? PlaybackSource.BACKEND : track.source()).getValue());
         entity.setSpotifyId(track.spotifyId());
         entity.setSpotifyUri(track.spotifyUri());
         entity.setSpotifyUrl(track.spotifyUrl());
-        entity.setLyrics(track.lyrics());
+        entity.setLyrics(track.lyrics() == null ? List.of() : track.lyrics());
         if (trackMapper.selectById(track.id()) == null) {
             trackMapper.insert(entity);
         } else {
@@ -454,6 +473,10 @@ public class DefaultLibraryService implements LibraryService {
             return 0;
         }
         return Math.min(desiredIndex, queue.size() - 1);
+    }
+
+    private int clampVolume(int desiredVolume) {
+        return Math.max(0, Math.min(100, desiredVolume));
     }
 
     private boolean containsIgnoreCase(String value, String query) {

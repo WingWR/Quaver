@@ -69,6 +69,38 @@ Request body:
 }
 ```
 
+### `POST /library/playback/start`
+
+Starts or replaces the backend-managed playback session.
+
+Request body:
+
+```json
+{
+  "tracks": [],
+  "startIndex": 0,
+  "playbackSource": "backend"
+}
+```
+
+### `PATCH /library/playback/state`
+
+Updates playback session fields while preserving the current queue.
+
+Request body:
+
+```json
+{
+  "currentTrackIndex": 0,
+  "isPlaying": true,
+  "progress": 42,
+  "volume": 72,
+  "playbackSource": "backend",
+  "isShuffleEnabled": false,
+  "repeatMode": "off"
+}
+```
+
 ### `POST /library/playlists/{playlistId}/tracks`
 
 Adds a track into a backend-managed playlist.

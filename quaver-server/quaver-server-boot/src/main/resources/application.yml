@@ -2,7 +2,9 @@ spring:
   application:
     name: quaver-server
   config:
-    import: optional:file:./application-local.yml
+    import:
+      - optional:file:./application-local.yml
+      - optional:classpath:application-local.yml
   datasource:
     url: ${QUAVER_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${QUAVER_MYSQL_USERNAME:root}
