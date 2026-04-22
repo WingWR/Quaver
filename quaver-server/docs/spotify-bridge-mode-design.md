@@ -207,16 +207,9 @@ The current backend already supports the overall bridge-mode architecture well:
 4. Local playback session and recommendation history are already modeled in domain, DTO, repository, and service layers.
 5. MySQL/Redis design already separates local user state from external Spotify metadata cache.
 
-### Current gaps
+### Remaining gaps
 
-The following still need to be implemented for real Spotify bridge integration:
-
-1. concrete `SpotifyAuthClient`
-2. concrete `SpotifyCatalogClient`
-3. concrete `SpotifyPlaybackClient`
-4. bridge token persistence and refresh strategy
-5. a dedicated auth entrypoint for developer bridge-account authorization
-6. planner-driven execution of Spotify operations
+The concrete Spotify auth, catalog, playback clients, bridge-token persistence, refresh strategy, and developer auth entrypoint are now implemented. The remaining gap is planner-driven execution of Spotify operations from the full Agent runtime.
 
 ## Bridge Mode and Local State Sync
 

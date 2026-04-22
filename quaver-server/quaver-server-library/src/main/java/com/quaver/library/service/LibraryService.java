@@ -3,6 +3,7 @@ package com.quaver.library.service;
 import com.quaver.common.model.music.PlaybackSource;
 import com.quaver.common.model.music.PlaybackStateView;
 import com.quaver.common.model.music.PlaylistView;
+import com.quaver.common.model.music.RepeatMode;
 import com.quaver.common.model.music.TrackView;
 import com.quaver.library.dto.LibraryBootstrapResponse;
 import com.quaver.library.dto.LibraryMutationResponse;
@@ -20,6 +21,9 @@ public interface LibraryService {
     LibraryMutationResponse addTrackToPlaylist(String playlistId, String trackId);
 
     PlaybackStateView startPlayback(List<TrackView> queue, int startIndex, PlaybackSource playbackSource);
+
+    PlaybackStateView updatePlaybackState(Integer currentTrackIndex, Boolean isPlaying, Integer progress, Integer volume,
+                                          PlaybackSource playbackSource, Boolean isShuffleEnabled, RepeatMode repeatMode);
 
     TrackView cacheTrack(TrackView track);
 

@@ -2,6 +2,8 @@ import { backendRequest } from "../../../api/http";
 import type {
   LibraryBootstrapResponse,
   LibraryMutationResponse,
+  PlaybackStartRequest,
+  PlaybackStateUpdateRequest,
   PlaylistTrackMutationRequest,
   QueueMutationRequest,
 } from "./types";
@@ -22,6 +24,20 @@ export function insertTrackNextInBackendQueue(payload: QueueMutationRequest) {
 export function appendTrackToBackendQueue(payload: QueueMutationRequest) {
   return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/queue`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function startBackendPlayback(payload: PlaybackStartRequest) {
+  return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/playback/start`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateBackendPlaybackState(payload: PlaybackStateUpdateRequest) {
+  return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/playback/state`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }

@@ -3,6 +3,8 @@ import {
   addTrackToBackendPlaylist,
   appendTrackToBackendQueue,
   insertTrackNextInBackendQueue,
+  startBackendPlayback,
+  updateBackendPlaybackState,
 } from "../features/library/api/client";
 import { useUiStore } from "../store/useUiStore";
 import type { Playlist, Track } from "../types/music";
@@ -74,9 +76,65 @@ export function usePlaybackControllerRuntime() {
     return spotify.deviceId;
   }
 
+  function currentBackendPlaybackSnapshot() {
+    const state = useQuaverStore.getState();
+
+    return {
+      currentTrackIndex: state.currentTrackIndex,
+      isPlaying: state.isPlaying,
+      progress: state.progress,
+      volume: state.volume,
+      playbackSource: state.playbackSource,
+      isShuffleEnabled: state.isShuffleEnabled,
+      repeatMode: state.repeatMode,
+    };
+  }
+
+  function warnPlaybackSync(error: unknown, dedupeKey: string) {
+    pushNotice({
+      message: formatBackendError(
+        error,
+        "Playback state is only updated locally because the backend session endpoint is unavailable.",
+      ),
+      variant: "warning",
+      dedupeKey,
+    });
+  }
+
+  async function syncBackendPlaybackSnapshot(dedupeKey: string) {
+    try {
+      const response = await updateBackendPlaybackState(currentBackendPlaybackSnapshot());
+      if (response.playback) {
+        syncPlayback(response.playback);
+      }
+    } catch (error) {
+      warnPlaybackSync(error, dedupeKey);
+    }
+  }
+
+  async function startBackendPlaybackSnapshot(
+    tracks: Track[],
+    startIndex: number,
+    dedupeKey: string,
+  ) {
+    try {
+      const response = await startBackendPlayback({
+        tracks,
+        startIndex,
+        playbackSource: "backend",
+      });
+      if (response.playback) {
+        syncPlayback(response.playback);
+      }
+    } catch (error) {
+      warnPlaybackSync(error, dedupeKey);
+    }
+  }
+
   async function togglePlayback() {
     if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
       togglePlaybackLocal();
+      await syncBackendPlaybackSnapshot("playback-toggle");
       return;
     }
 
@@ -104,6 +162,7 @@ export function usePlaybackControllerRuntime() {
   async function playNext() {
     if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
       playNextLocal();
+      await syncBackendPlaybackSnapshot("playback-next");
       return;
     }
 
@@ -114,6 +173,7 @@ export function usePlaybackControllerRuntime() {
   async function playPrevious() {
     if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
       playPreviousLocal();
+      await syncBackendPlaybackSnapshot("playback-previous");
       return;
     }
 
@@ -125,6 +185,7 @@ export function usePlaybackControllerRuntime() {
     setProgress(progress);
 
     if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+      await syncBackendPlaybackSnapshot("playback-seek");
       return;
     }
 
@@ -135,6 +196,7 @@ export function usePlaybackControllerRuntime() {
     setVolume(volume);
 
     if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+      await syncBackendPlaybackSnapshot("playback-volume");
       return;
     }
 
@@ -144,6 +206,7 @@ export function usePlaybackControllerRuntime() {
   async function playPlaylistTrack(playlist: Playlist, index: number) {
     if (!spotify.isAuthenticated || !spotify.deviceId || playlist.source !== "spotify") {
       setQueue(playlist.tracks, index, "backend");
+      await startBackendPlaybackSnapshot(playlist.tracks, index, `playback-playlist-${playlist.id}`);
       return;
     }
 
@@ -171,6 +234,7 @@ export function usePlaybackControllerRuntime() {
 
     if (!spotify.isAuthenticated || !spotify.deviceId || !spotifyUris.length) {
       setQueue(tracks, startIndex, "backend");
+      await startBackendPlaybackSnapshot(tracks, startIndex, "playback-track-list");
       return;
     }
 
@@ -192,6 +256,7 @@ export function usePlaybackControllerRuntime() {
   async function playQueueTrack(track: Track, index: number) {
     if (!spotify.isAuthenticated || !spotify.deviceId || !track.spotifyUri) {
       setCurrentTrackIndex(index);
+      await syncBackendPlaybackSnapshot("playback-queue-track");
       return;
     }
 
@@ -201,6 +266,7 @@ export function usePlaybackControllerRuntime() {
   async function toggleShuffleMode() {
     if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
       toggleShuffleLocal();
+      await syncBackendPlaybackSnapshot("playback-shuffle");
       return;
     }
 
@@ -215,6 +281,7 @@ export function usePlaybackControllerRuntime() {
   async function cycleRepeatMode() {
     if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
       cycleRepeatModeLocal();
+      await syncBackendPlaybackSnapshot("playback-repeat");
       return;
     }
 
@@ -234,9 +301,12 @@ export function usePlaybackControllerRuntime() {
 
     if (playbackSource === "backend") {
       try {
-        await insertTrackNextInBackendQueue({
+        const response = await insertTrackNextInBackendQueue({
           trackId: track.id,
         });
+        if (response.playback) {
+          syncPlayback(response.playback);
+        }
       } catch (error) {
         pushNotice({
           message: formatBackendError(
@@ -267,9 +337,12 @@ export function usePlaybackControllerRuntime() {
 
     if (playbackSource === "backend") {
       try {
-        await appendTrackToBackendQueue({
+        const response = await appendTrackToBackendQueue({
           trackId: track.id,
         });
+        if (response.playback) {
+          syncPlayback(response.playback);
+        }
       } catch (error) {
         pushNotice({
           message: formatBackendError(

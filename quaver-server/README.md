@@ -17,6 +17,11 @@ Main runtime config lives in:
 - `quaver-server-boot/src/main/resources/application.yml`
 - `quaver-server-boot/src/main/resources/application-local.example.yml`
 
+For local development, copy the example to either:
+
+- `quaver-server/application-local.yml` when running Maven from `quaver-server/`
+- `quaver-server-boot/src/main/resources/application-local.yml` when you prefer classpath resources
+
 Supported config areas:
 
 - frontend origin / CORS
@@ -33,6 +38,26 @@ From `quaver-server/`:
 
 ```bash
 mvn -s .mvn-local-settings.xml -pl quaver-server-boot -am test
+```
+
+## Run
+
+Start MySQL and Redis first, then run:
+
+```bash
+mvn -s .mvn-local-settings.xml -pl quaver-server-boot -am spring-boot:run
+```
+
+The API is served under:
+
+```text
+http://localhost:8080/api
+```
+
+To authorize the backend Spotify bridge account, open:
+
+```text
+http://localhost:8080/api/spotify/auth/login
 ```
 
 ## Boot Entry

@@ -26,6 +26,22 @@ export interface PlaylistTrackMutationRequest {
   trackId: string;
 }
 
+export interface PlaybackStartRequest {
+  tracks: Track[];
+  startIndex?: number;
+  playbackSource?: PlaybackSource;
+}
+
+export interface PlaybackStateUpdateRequest {
+  currentTrackIndex?: number;
+  isPlaying?: boolean;
+  progress?: number;
+  volume?: number;
+  playbackSource?: PlaybackSource;
+  isShuffleEnabled?: boolean;
+  repeatMode?: RepeatMode;
+}
+
 export interface LibraryMutationResponse {
   success: boolean;
   message?: string;
