@@ -19,10 +19,10 @@ export default function LibraryQueueSection() {
       <div className="mb-3 flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-brand-grey">Queue</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-tight">播放队列</h3>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight">Playback queue</h3>
         </div>
         <span className="rounded-full bg-white/[0.04] px-3 py-1 text-[11px] text-brand-grey">
-          Live
+          {queue.length ? "Live" : "Empty"}
         </span>
       </div>
 
@@ -68,9 +68,10 @@ export default function LibraryQueueSection() {
       ) : (
         <div className="flex flex-1 items-center rounded-[28px] border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-5">
           <div>
-            <p className="text-sm font-medium text-white">当前没有播放队列</p>
+            <p className="text-sm font-medium text-white">Queue is empty</p>
             <p className="mt-2 text-sm leading-6 text-brand-grey">
-              {library.message ?? "后端接入后，这里会显示实时队列。"}
+              {library.message ??
+                "Play a track or add one from search to build the queue for this session."}
             </p>
           </div>
         </div>

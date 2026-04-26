@@ -13,22 +13,25 @@ function IconButton({
   onClick,
   className = "",
   isActive = false,
+  disabled = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   className?: string;
   isActive?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <motion.button
       whileTap={{ scale: 0.94 }}
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`flex h-10 w-10 items-center justify-center rounded-full border transition shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:-translate-y-0.5 hover:bg-white/[0.11] hover:text-white ${
         isActive
           ? "border-cyan-200/[0.24] bg-[linear-gradient(135deg,rgba(52,211,153,0.22),rgba(56,189,248,0.14))] text-emerald-200"
           : "border-white/[0.08] bg-white/[0.055] text-white/[0.78]"
-      } ${className}`}
+      } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:bg-white/[0.055] ${className}`}
     >
       {children}
     </motion.button>
@@ -119,6 +122,7 @@ export default function PlaybackControls({
   onCycleRepeatMode: () => void;
 }) {
   const duration = track?.duration ?? 0;
+  const hasTrack = Boolean(track);
   const progressPercent = duration ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
 
   return (
@@ -127,24 +131,26 @@ export default function PlaybackControls({
       className="flex h-full min-w-0 max-w-[46rem] flex-1 flex-col justify-center rounded-[28px] border border-white/10 bg-black/[0.24] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
     >
       <div className="flex items-center justify-center gap-2 sm:gap-3">
-        <IconButton onClick={onToggleShuffle} isActive={isShuffleEnabled}>
+        <IconButton onClick={onToggleShuffle} isActive={isShuffleEnabled} disabled={!hasTrack}>
           <ShuffleIcon />
         </IconButton>
-        <IconButton onClick={onPlayPrevious}>
+        <IconButton onClick={onPlayPrevious} disabled={!hasTrack}>
           <PreviousIcon />
         </IconButton>
         <IconButton
           onClick={onTogglePlayback}
+          disabled={!hasTrack}
           className="h-12 w-12 border-white/25 bg-[linear-gradient(135deg,#f8fafc,#a7f3d0_36%,#67e8f9_70%,#f9a8d4)] text-black shadow-[0_14px_34px_rgba(103,232,249,0.22)] hover:bg-white"
         >
           <PlayPauseIcon isPlaying={isPlaying} />
         </IconButton>
-        <IconButton onClick={onPlayNext}>
+        <IconButton onClick={onPlayNext} disabled={!hasTrack}>
           <NextIcon />
         </IconButton>
         <IconButton
           onClick={onCycleRepeatMode}
           isActive={repeatMode !== "off"}
+          disabled={!hasTrack}
           className="relative"
         >
           <RepeatIcon />
@@ -171,6 +177,7 @@ export default function PlaybackControls({
             step={1}
             value={Math.min(progress, duration || 0)}
             onChange={(event) => onSeek(Number(event.target.value))}
+            disabled={!hasTrack}
             className="player-slider relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent"
             aria-label="Seek"
           />

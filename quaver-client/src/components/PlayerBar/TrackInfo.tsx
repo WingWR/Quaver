@@ -11,10 +11,13 @@ export default function TrackInfo({
   if (!track) {
     return (
       <div className="flex min-w-0 items-center gap-4 rounded-[28px] border border-white/[0.08] bg-white/[0.035] p-3">
-        <div className="h-16 w-16 rounded-2xl bg-[linear-gradient(135deg,rgba(52,211,153,0.22),rgba(56,189,248,0.16),rgba(244,114,182,0.18))]" />
-        <div className="min-w-0 space-y-2">
-          <p className="text-sm font-semibold text-white">Queue is ready</p>
-          <div className="flex items-center gap-1.5">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(52,211,153,0.22),rgba(56,189,248,0.16),rgba(244,114,182,0.18))]">
+          <span className="h-6 w-6 rounded-full border border-white/[0.28]" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-white">Nothing playing</p>
+          <p className="mt-1 text-xs text-white/[0.48]">Choose a track when your library is ready.</p>
+          <div className="mt-2 flex items-center gap-1.5">
             {[0, 1, 2, 3].map((index) => (
               <span
                 key={index}
