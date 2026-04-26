@@ -26,15 +26,19 @@ public class DefaultSpotifyCatalogService implements SpotifyCatalogService {
 
     @Override
     public List<TrackView> searchTracks(String query, int limit) {
-        String token = requireAccessToken();
-        return spotifyCatalogClient.searchTracks(token, query, limit).stream()
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        String token = requireCatalogAccessToken();
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        return spotifyCatalogClient.searchTracks(token, query.trim(), safeLimit).stream()
                 .map(this::toTrackView)
                 .toList();
     }
 
     @Override
     public Optional<TrackView> getTrack(String trackId) {
-        String token = requireAccessToken();
+        String token = requireCatalogAccessToken();
         return spotifyCatalogClient.getTrack(token, normalizeSpotifyTrackId(trackId)).map(this::toTrackView);
     }
 
@@ -64,10 +68,10 @@ public class DefaultSpotifyCatalogService implements SpotifyCatalogService {
         );
     }
 
-    private String requireAccessToken() {
-        return spotifyAuthService.getValidAccessToken()
+    private String requireCatalogAccessToken() {
+        return spotifyAuthService.getCatalogAccessToken()
                 .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
-                        "Spotify bridge account has not completed authorization yet."));
+                        "Spotify API credentials are not configured."));
     }
 
     private String normalizeSpotifyTrackId(String trackId) {
@@ -76,4 +80,5 @@ public class DefaultSpotifyCatalogService implements SpotifyCatalogService {
         }
         return trackId.startsWith("spotify-track-") ? trackId.substring("spotify-track-".length()) : trackId;
     }
+
 }

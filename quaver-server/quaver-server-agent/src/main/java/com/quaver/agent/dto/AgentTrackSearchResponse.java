@@ -26,4 +26,6 @@ public class AgentTrackSearchResponse {
     private String status;
 
     private long tookMs;
+
+    private String message;
 }

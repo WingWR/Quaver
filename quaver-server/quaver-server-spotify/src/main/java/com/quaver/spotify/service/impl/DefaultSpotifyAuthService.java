@@ -11,10 +11,10 @@ import com.quaver.spotify.service.SpotifyAuthService;
 import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +28,9 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
     private final SpotifyAuthorizationMapper authorizationMapper;
     private final SpotifyProperties spotifyProperties;
     private final Clock clock;
-    private final Map<String, LocalDateTime> validStates = new HashMap<>();
+    private final Map<String, LocalDateTime> validStates = new ConcurrentHashMap<>();
+    private String catalogAccessToken;
+    private LocalDateTime catalogAccessTokenExpiresAt;
 
     public DefaultSpotifyAuthService(
             SpotifyAuthClient spotifyAuthClient,
@@ -44,7 +46,8 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
 
     @Override
     public URI buildAuthorizationUri() {
-        ensureEnabled();
+        ensureBridgeConfigured();
+        pruneExpiredStates();
         String state = UUID.randomUUID().toString();
         validStates.put(state, LocalDateTime.now(clock).plusMinutes(10));
         return spotifyAuthClient.buildAuthorizationUri(state);
@@ -53,7 +56,7 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
     @Override
     @Transactional
     public SpotifyAuthStatusDto handleAuthorizationCallback(String code, String state) {
-        ensureEnabled();
+        ensureBridgeConfigured();
         LocalDateTime expiresAt = validStates.remove(state);
         if (state == null || expiresAt == null || expiresAt.isBefore(LocalDateTime.now(clock))) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "Spotify authorization state is invalid or expired.");
@@ -61,42 +64,77 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
 
         SpotifyTokenSnapshot snapshot = spotifyAuthClient.exchangeAuthorizationCode(code);
         saveSnapshot(snapshot);
-        return toStatus(snapshot);
+        return toStatus(snapshot, "authorized", "Spotify bridge account is connected.");
     }
 
     @Override
+    @Transactional
     public SpotifyAuthStatusDto getCurrentStatus() {
         if (!spotifyProperties.isEnabled()) {
-            return new SpotifyAuthStatusDto(false, false, spotifyProperties.getDeveloperAccount(),
-                    spotifyProperties.getRedirectUri(), spotifyProperties.getScopes(), null);
+            return baseStatus(false, false, null, "disabled", "Spotify bridge mode is disabled.");
+        }
+        if (!hasClientCredentials()) {
+            return baseStatus(false, false, null, "missing-client-credentials",
+                    "Spotify Client ID and Client Secret are required.");
+        }
+        if (isBlank(spotifyProperties.getRedirectUri())) {
+            return baseStatus(false, false, null, "missing-redirect-uri",
+                    "Spotify redirect URI is required.");
         }
 
         SpotifyAuthorizationEntity entity = authorizationMapper.selectById(BRIDGE_ID);
-        if (entity == null) {
-            return new SpotifyAuthStatusDto(true, false, spotifyProperties.getDeveloperAccount(),
-                    spotifyProperties.getRedirectUri(), spotifyProperties.getScopes(), null);
+        if (entity != null) {
+            LocalDateTime refreshThreshold = LocalDateTime.now(clock).plusMinutes(1);
+            if (entity.getExpiresAt() != null && !entity.getExpiresAt().isAfter(refreshThreshold)) {
+                try {
+                    getValidAccessToken();
+                    entity = authorizationMapper.selectById(BRIDGE_ID);
+                } catch (RuntimeException exception) {
+                    return baseStatus(true, false, null, "refresh-failed",
+                            "Spotify authorization exists, but refreshing it failed. Please connect Spotify again.");
+                }
+            }
+
+            return new SpotifyAuthStatusDto(
+                    true,
+                    true,
+                    entity.getDeveloperAccount(),
+                    spotifyProperties.getRedirectUri(),
+                    spotifyProperties.getDefaultDeviceId(),
+                    entity.getScopes(),
+                    entity.getExpiresAt(),
+                    hasConfiguredRefreshToken(),
+                    "authorized",
+                    "Spotify bridge account is connected."
+            );
         }
 
-        return new SpotifyAuthStatusDto(
-                true,
-                true,
-                entity.getDeveloperAccount(),
-                spotifyProperties.getRedirectUri(),
-                entity.getScopes(),
-                entity.getExpiresAt()
-        );
+        Optional<SpotifyTokenSnapshot> configuredToken;
+        try {
+            configuredToken = refreshFromConfiguredToken();
+        } catch (RuntimeException exception) {
+            return baseStatus(true, false, null, "refresh-token-invalid",
+                    "The configured Spotify refresh token could not be used. Please connect Spotify in the browser once.");
+        }
+        if (configuredToken.isPresent()) {
+            return toStatus(configuredToken.get(), "authorized",
+                    "Spotify bridge account was connected from the configured refresh token.");
+        }
+
+        return baseStatus(true, false, null, "needs-oauth",
+                "Spotify needs one browser authorization before backend playback and library sync can work.");
     }
 
     @Override
     @Transactional
     public Optional<String> getValidAccessToken() {
-        if (!spotifyProperties.isEnabled()) {
+        if (!spotifyProperties.isEnabled() || !hasClientCredentials()) {
             return Optional.empty();
         }
 
         SpotifyAuthorizationEntity entity = authorizationMapper.selectById(BRIDGE_ID);
         if (entity == null) {
-            return Optional.empty();
+            return refreshFromConfiguredToken().map(SpotifyTokenSnapshot::accessToken);
         }
 
         LocalDateTime refreshThreshold = LocalDateTime.now(clock).plusMinutes(1);
@@ -116,6 +154,45 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
         }
         saveSnapshot(refreshed);
         return Optional.ofNullable(refreshed.accessToken());
+    }
+
+    @Override
+    public synchronized Optional<String> getCatalogAccessToken() {
+        if (!spotifyProperties.isEnabled() || !hasClientCredentials()) {
+            return Optional.empty();
+        }
+
+        LocalDateTime refreshThreshold = LocalDateTime.now(clock).plusMinutes(1);
+        if (catalogAccessToken != null
+                && !catalogAccessToken.isBlank()
+                && catalogAccessTokenExpiresAt != null
+                && catalogAccessTokenExpiresAt.isAfter(refreshThreshold)) {
+            return Optional.of(catalogAccessToken);
+        }
+
+        SpotifyTokenSnapshot snapshot = spotifyAuthClient.requestClientCredentialsToken();
+        catalogAccessToken = snapshot.accessToken();
+        catalogAccessTokenExpiresAt = snapshot.expiresAt();
+        return Optional.ofNullable(catalogAccessToken);
+    }
+
+    private Optional<SpotifyTokenSnapshot> refreshFromConfiguredToken() {
+        if (!hasConfiguredRefreshToken()) {
+            return Optional.empty();
+        }
+
+        SpotifyTokenSnapshot refreshed = spotifyAuthClient.refreshAccessToken(spotifyProperties.getBridgeRefreshToken());
+        if (refreshed.refreshToken() == null || refreshed.refreshToken().isBlank()) {
+            refreshed = new SpotifyTokenSnapshot(
+                    refreshed.accessToken(),
+                    spotifyProperties.getBridgeRefreshToken(),
+                    refreshed.tokenType(),
+                    refreshed.scopes(),
+                    refreshed.expiresAt()
+            );
+        }
+        saveSnapshot(refreshed);
+        return Optional.of(refreshed);
     }
 
     private void saveSnapshot(SpotifyTokenSnapshot snapshot) {
@@ -142,20 +219,68 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
         authorizationMapper.updateById(entity);
     }
 
-    private SpotifyAuthStatusDto toStatus(SpotifyTokenSnapshot snapshot) {
+    private SpotifyAuthStatusDto toStatus(SpotifyTokenSnapshot snapshot, String mode, String message) {
         return new SpotifyAuthStatusDto(
                 spotifyProperties.isEnabled(),
                 true,
                 spotifyProperties.getDeveloperAccount(),
                 spotifyProperties.getRedirectUri(),
+                spotifyProperties.getDefaultDeviceId(),
                 snapshot.scopes(),
-                snapshot.expiresAt()
+                snapshot.expiresAt(),
+                hasConfiguredRefreshToken(),
+                mode,
+                message
         );
     }
 
-    private void ensureEnabled() {
+    private SpotifyAuthStatusDto baseStatus(
+            boolean enabled,
+            boolean authorized,
+            LocalDateTime expiresAt,
+            String mode,
+            String message
+    ) {
+        return new SpotifyAuthStatusDto(
+                enabled,
+                authorized,
+                spotifyProperties.getDeveloperAccount(),
+                spotifyProperties.getRedirectUri(),
+                spotifyProperties.getDefaultDeviceId(),
+                spotifyProperties.getScopes(),
+                expiresAt,
+                hasConfiguredRefreshToken(),
+                mode,
+                message
+        );
+    }
+
+    private void ensureBridgeConfigured() {
         if (!spotifyProperties.isEnabled()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "Spotify bridge mode is disabled.");
         }
+        if (!hasClientCredentials()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "Spotify Client ID and Client Secret are required.");
+        }
+        if (isBlank(spotifyProperties.getRedirectUri())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "Spotify redirect URI is required.");
+        }
+    }
+
+    private boolean hasClientCredentials() {
+        return !isBlank(spotifyProperties.getClientId()) && !isBlank(spotifyProperties.getClientSecret());
+    }
+
+    private boolean hasConfiguredRefreshToken() {
+        return !isBlank(spotifyProperties.getBridgeRefreshToken());
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private void pruneExpiredStates() {
+        LocalDateTime now = LocalDateTime.now(clock);
+        validStates.entrySet().removeIf(entry -> entry.getValue().isBefore(now));
     }
 }

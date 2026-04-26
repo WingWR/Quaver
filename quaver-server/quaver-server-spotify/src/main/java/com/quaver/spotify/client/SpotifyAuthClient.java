@@ -34,13 +34,15 @@ public class SpotifyAuthClient {
     }
 
     public URI buildAuthorizationUri(String state) {
-        return UriComponentsBuilder.fromHttpUrl(AUTHORIZE_URL)
+        return UriComponentsBuilder.fromUriString(AUTHORIZE_URL)
                 .queryParam("response_type", "code")
                 .queryParam("client_id", spotifyProperties.getClientId())
                 .queryParam("scope", String.join(" ", spotifyProperties.getScopes()))
                 .queryParam("redirect_uri", spotifyProperties.getRedirectUri())
                 .queryParam("state", state)
-                .build(true)
+                .queryParam("show_dialog", true)
+                .build()
+                .encode()
                 .toUri();
     }
 
@@ -56,6 +58,12 @@ public class SpotifyAuthClient {
         LinkedMultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "refresh_token");
         form.add("refresh_token", refreshToken);
+        return requestToken(form);
+    }
+
+    public SpotifyTokenSnapshot requestClientCredentialsToken() {
+        LinkedMultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "client_credentials");
         return requestToken(form);
     }
 
@@ -84,7 +92,7 @@ public class SpotifyAuthClient {
                 response.refreshToken(),
                 response.tokenType(),
                 scopes,
-                LocalDateTime.now(clock).plusSeconds(response.expiresIn())
+                LocalDateTime.now(clock).plusSeconds(response.expiresIn() == null ? 3600 : response.expiresIn())
         );
     }
 

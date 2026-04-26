@@ -7,6 +7,8 @@ public class QuaverAiProperties {
 
     private String apiKey = "";
     private String model = "gpt-4.1-mini";
+    private String searchModel = "gpt-4.1-mini";
+    private String agentModel = "gpt-5";
     private String baseUrl = "https://api.openai.com/v1";
 
     public String getApiKey() {
@@ -23,6 +25,25 @@ public class QuaverAiProperties {
 
     public void setModel(String model) {
         this.model = model;
+        if (model != null && !model.isBlank()) {
+            this.agentModel = model;
+        }
+    }
+
+    public String getSearchModel() {
+        return searchModel;
+    }
+
+    public void setSearchModel(String searchModel) {
+        this.searchModel = searchModel;
+    }
+
+    public String getAgentModel() {
+        return agentModel == null || agentModel.isBlank() ? model : agentModel;
+    }
+
+    public void setAgentModel(String agentModel) {
+        this.agentModel = agentModel;
     }
 
     public String getBaseUrl() {
