@@ -5,7 +5,7 @@ import { useUiStore } from "../../../store/useUiStore";
 import { fetchLibraryBootstrap } from "../api/client";
 
 const BACKEND_UNAVAILABLE_MESSAGE =
-  "音乐后端暂未接入，当前可以查看页面结构，但歌单和队列数据不会显示。";
+  "The music backend is unavailable. The app shell is still visible, but library and queue data cannot load.";
 
 export function useLibraryBootstrap() {
   const hydrateBackendLibrary = useQuaverStore((state) => state.hydrateBackendLibrary);
@@ -18,7 +18,7 @@ export function useLibraryBootstrap() {
     async function bootstrapLibrary() {
       setLibraryState({
         status: "loading",
-        message: "正在连接音乐后端...",
+        message: "Connecting to the music backend...",
       });
 
       try {
@@ -30,7 +30,7 @@ export function useLibraryBootstrap() {
           message:
             snapshot.playlists.length || snapshot.playback?.queue.length
               ? null
-              : "后端已连接，当前还没有可展示的歌单或队列数据。",
+              : "Backend connected. This user does not have playlists or queued tracks yet.",
           lastLoadedAt: snapshot.serverTime ?? new Date().toISOString(),
         });
       } catch (error) {

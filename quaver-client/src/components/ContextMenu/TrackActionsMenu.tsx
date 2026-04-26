@@ -83,7 +83,7 @@ export default function TrackActionsMenu({
                 }}
                 className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/84 transition hover:bg-white/[0.06] hover:text-white"
               >
-                下一首播放
+                Play next
               </button>
               <button
                 type="button"
@@ -93,13 +93,13 @@ export default function TrackActionsMenu({
                 }}
                 className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/84 transition hover:bg-white/[0.06] hover:text-white"
               >
-                添加到播放队列
+                Add to queue
               </button>
             </div>
 
             <div className="border-t border-white/[0.05] px-1 py-2">
               <p className="px-3 pb-1 text-[11px] uppercase tracking-[0.24em] text-brand-grey">
-                加入歌单
+                Add to playlist
               </p>
               <div className="max-h-56 overflow-y-auto">
                 {playlists.length ? (
@@ -117,7 +117,9 @@ export default function TrackActionsMenu({
                     </button>
                   ))
                 ) : (
-                  <div className="px-3 py-2 text-sm text-brand-grey">当前没有可写入的歌单</div>
+                  <div className="px-3 py-2 text-sm leading-6 text-brand-grey">
+                    No playlists are available for this user yet.
+                  </div>
                 )}
               </div>
             </div>

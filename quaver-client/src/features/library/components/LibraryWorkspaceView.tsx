@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import TrackActionsMenu from "../../../components/ContextMenu/TrackActionsMenu";
 import { usePlaybackControllerRuntime } from "../../../hooks/usePlaybackControllerRuntime";
 import { useQuaverStore } from "../../../store/useQuaverStore";
-import type { Track } from "../../../types/music";
+import type { Playlist, Track } from "../../../types/music";
 
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
@@ -17,6 +17,27 @@ function BackIcon() {
       <path d="M14 6L8 12L14 18" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M9 12H20" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function CoverArt({ playlist }: { playlist: Playlist }) {
+  if (playlist.cover) {
+    return (
+      <img
+        src={playlist.cover}
+        alt={playlist.name}
+        className="h-28 w-28 rounded-[24px] object-cover shadow-[0_26px_60px_rgba(0,0,0,0.32)] sm:h-36 sm:w-36 sm:rounded-[28px]"
+      />
+    );
+  }
+
+  return (
+    <div
+      className="h-28 w-28 rounded-[24px] shadow-[0_26px_60px_rgba(0,0,0,0.32)] sm:h-36 sm:w-36 sm:rounded-[28px]"
+      style={{
+        background: `linear-gradient(135deg, ${playlist.accent || "#34d399"}66, rgba(56,189,248,0.22), rgba(244,114,182,0.18))`,
+      }}
+    />
   );
 }
 
@@ -61,7 +82,7 @@ function LyricsPanel({
           <p className="mt-6 text-xs uppercase tracking-[0.3em] text-brand-grey">Lyrics View</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">{track.title}</h2>
           <p className="mt-2 text-base text-brand-grey">
-            {track.artist} · {track.album}
+            {track.artist} - {track.album}
           </p>
         </div>
 
@@ -107,6 +128,21 @@ function LyricsPanel({
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function EmptyPlaylistTracks({ playlist }: { playlist: Playlist }) {
+  return (
+    <div className="flex h-full min-h-[240px] items-center justify-center rounded-[28px] border border-dashed border-white/[0.08] bg-white/[0.03] px-6 text-center">
+      <div>
+        <p className="text-sm font-semibold text-white">This playlist is empty</p>
+        <p className="mt-2 max-w-lg text-sm leading-6 text-brand-grey">
+          {playlist.source === "spotify"
+            ? "No tracks are available for this Spotify playlist yet. It may be empty or still waiting for Spotify sync."
+            : "Add tracks from search or another source when you are ready to build this playlist."}
+        </p>
       </div>
     </div>
   );
@@ -170,11 +206,7 @@ export default function LibraryWorkspaceView() {
         <>
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-5">
-              <img
-                src={selectedPlaylist.cover}
-                alt={selectedPlaylist.name}
-                className="h-28 w-28 rounded-[24px] object-cover shadow-[0_26px_60px_rgba(0,0,0,0.32)] sm:h-36 sm:w-36 sm:rounded-[28px]"
-              />
+              <CoverArt playlist={selectedPlaylist} />
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.35em] text-brand-grey">
                   {selectedPlaylist.source === "spotify" ? "Spotify Playlist" : "Backend Playlist"}
@@ -183,7 +215,7 @@ export default function LibraryWorkspaceView() {
                   {selectedPlaylist.name}
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-grey">
-                  {selectedPlaylist.description}
+                  {selectedPlaylist.description || "No description has been added yet."}
                 </p>
                 {spotify.error ? (
                   <p className="mt-3 text-sm text-[#d8c58d]">{spotify.error}</p>
@@ -268,7 +300,7 @@ export default function LibraryWorkspaceView() {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{track.title}</p>
                         <p className="truncate text-sm text-brand-grey">
-                          {track.artist} · {track.album}
+                          {track.artist} - {track.album}
                         </p>
                         <p className="mt-1 truncate text-xs capitalize text-brand-grey md:hidden">
                           {track.mood}
@@ -289,11 +321,7 @@ export default function LibraryWorkspaceView() {
                 );
               })
             ) : (
-              <div className="flex h-full min-h-[240px] items-center justify-center rounded-[28px] bg-white/[0.03] px-6 text-center text-brand-grey">
-                {selectedPlaylist.source === "spotify"
-                  ? "Loading playlist content from Spotify..."
-                  : library.message ?? "This playlist does not have any tracks yet."}
-              </div>
+              <EmptyPlaylistTracks playlist={selectedPlaylist} />
             )}
           </div>
         </>
@@ -301,11 +329,11 @@ export default function LibraryWorkspaceView() {
         <div className="flex h-full min-h-[420px] flex-col justify-center rounded-[32px] border border-dashed border-white/[0.08] bg-white/[0.02] px-8 py-10">
           <p className="text-xs uppercase tracking-[0.32em] text-brand-grey">Library</p>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white">
-            No playlist is available yet
+            No playlists yet
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-brand-grey">
             {library.message ??
-              "Mock data is gone. Real playlists and queue items will appear here as soon as the backend starts returning data."}
+              "This user has not created or connected any playlists. The library can stay empty; queue and playback will appear as tracks are played."}
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">

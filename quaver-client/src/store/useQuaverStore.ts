@@ -424,19 +424,19 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
           payload.selectedPlaylistId,
           state.selectedPlaylistId,
         ]),
-        queue: normalizedPlayback ? normalizedPlayback.queue : state.queue,
+        queue: normalizedPlayback ? normalizedPlayback.queue : [],
         currentTrackIndex: normalizedPlayback
           ? normalizedPlayback.currentTrackIndex
-          : state.currentTrackIndex,
-        isPlaying: playback ? playback.isPlaying ?? false : state.isPlaying,
-        progress: playback ? playback.progress ?? 0 : state.progress,
+          : 0,
+        isPlaying: playback ? playback.isPlaying ?? false : false,
+        progress: playback ? playback.progress ?? 0 : 0,
         volume: playback ? playback.volume ?? state.volume : state.volume,
-        playbackSource: playback ? playback.playbackSource ?? "backend" : state.playbackSource,
+        playbackSource: playback ? playback.playbackSource ?? "backend" : "backend",
         isShuffleEnabled: playback
           ? playback.isShuffleEnabled ?? state.isShuffleEnabled
-          : state.isShuffleEnabled,
-        repeatMode: playback ? playback.repeatMode ?? state.repeatMode : state.repeatMode,
-        queueRevision: playback ? state.queueRevision + 1 : state.queueRevision,
+          : false,
+        repeatMode: playback ? playback.repeatMode ?? state.repeatMode : "off",
+        queueRevision: state.queueRevision + 1,
       };
     }),
   setLibraryState: (library) =>
