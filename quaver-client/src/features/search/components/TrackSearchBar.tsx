@@ -90,7 +90,7 @@ export default function TrackSearchBar() {
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 20, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 320, damping: 30 }}
-            className="relative z-[85] flex w-full items-center gap-3 rounded-[22px] border border-white/[0.08] bg-[#121212] px-4 py-3 shadow-[0_22px_64px_rgba(0,0,0,0.44)] ring-1 ring-black/40 md:w-[24rem] md:max-w-[42vw]"
+            className="relative z-[85] flex w-full items-center gap-3 rounded-[22px] border border-white/[0.12] bg-black/[0.72] px-4 py-3 shadow-[0_22px_64px_rgba(0,0,0,0.48)] ring-1 ring-white/[0.03] backdrop-blur-2xl md:w-[24rem] md:max-w-[42vw]"
           >
             <SearchIcon />
             <input
@@ -115,14 +115,14 @@ export default function TrackSearchBar() {
               <button
                 type="button"
                 onClick={() => clearSearch()}
-                className="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-white/72 transition hover:bg-white/[0.1] hover:text-white"
+                className="rounded-full bg-white/[0.07] px-2.5 py-1 text-xs text-white/[0.72] transition hover:bg-white/[0.12] hover:text-white"
               >
                 Clear
               </button>
             ) : null}
 
             <div
-              className="absolute bottom-[calc(100%+14px)] right-0 z-[90] w-full rounded-[24px] border border-white/[0.08] bg-[#161616] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.54)] ring-1 ring-black/40 md:w-[24rem]"
+              className="absolute bottom-[calc(100%+14px)] right-0 z-[90] w-full rounded-[24px] border border-white/[0.12] bg-black/[0.82] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.58)] ring-1 ring-white/[0.03] backdrop-blur-2xl md:w-[24rem]"
               onMouseDown={(event) => {
                 event.preventDefault();
                 if (blurTimeoutRef.current) {
@@ -140,7 +140,7 @@ export default function TrackSearchBar() {
                 <button
                   type="button"
                   onClick={() => void submitSearch()}
-                  className="rounded-full border border-spotify-green/25 bg-spotify-green/10 px-3 py-1.5 text-xs font-medium text-spotify-green transition hover:bg-spotify-green/15"
+                  className="rounded-full border border-cyan-200/[0.24] bg-[linear-gradient(135deg,rgba(52,211,153,0.18),rgba(56,189,248,0.14))] px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:border-cyan-100/[0.36]"
                 >
                   Search
                 </button>
@@ -178,7 +178,7 @@ export default function TrackSearchBar() {
                             track,
                           });
                         }}
-                        className="flex w-full items-center gap-3 rounded-2xl bg-white/[0.035] px-3 py-2 text-left transition hover:bg-white/[0.07]"
+                        className="flex w-full items-center gap-3 rounded-2xl bg-white/[0.04] px-3 py-2 text-left transition hover:bg-white/[0.08]"
                       >
                         <img
                           src={track.artwork}
@@ -213,7 +213,7 @@ export default function TrackSearchBar() {
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 16, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 320, damping: 30 }}
-            className="flex h-11 items-center gap-2 rounded-full bg-white/[0.055] px-4 text-sm text-white/80 transition hover:bg-white/[0.09] hover:text-white"
+            className="flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:bg-white/[0.11] hover:text-white"
           >
             <SearchIcon />
             <span className="hidden text-sm font-medium md:inline">Search</span>

@@ -2,7 +2,7 @@ spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
-    password: your-password
+    password: WANGRUI37211WING
   data:
     redis:
       host: 127.0.0.1

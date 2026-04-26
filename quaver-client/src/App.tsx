@@ -1,5 +1,5 @@
-import MainApp from "./layouts/MainApp";
+import { AppRouter } from "./router";
 
 export default function App() {
-  return <MainApp />;
+  return <AppRouter />;
 }

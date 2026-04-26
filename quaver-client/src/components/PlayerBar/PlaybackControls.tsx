@@ -20,15 +20,18 @@ function IconButton({
   isActive?: boolean;
 }) {
   return (
-    <button
+    <motion.button
+      whileTap={{ scale: 0.94 }}
       type="button"
       onClick={onClick}
-      className={`flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-white/[0.09] hover:text-white ${
-        isActive ? "bg-spotify-green/18 text-spotify-green" : "bg-white/[0.05] text-white/80"
+      className={`flex h-10 w-10 items-center justify-center rounded-full border transition shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:-translate-y-0.5 hover:bg-white/[0.11] hover:text-white ${
+        isActive
+          ? "border-cyan-200/[0.24] bg-[linear-gradient(135deg,rgba(52,211,153,0.22),rgba(56,189,248,0.14))] text-emerald-200"
+          : "border-white/[0.08] bg-white/[0.055] text-white/[0.78]"
       } ${className}`}
     >
       {children}
-    </button>
+    </motion.button>
   );
 }
 
@@ -116,11 +119,14 @@ export default function PlaybackControls({
   onCycleRepeatMode: () => void;
 }) {
   const duration = track?.duration ?? 0;
-  const progressPercent = duration ? (progress / duration) * 100 : 0;
+  const progressPercent = duration ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
 
   return (
-    <motion.div layout className="flex h-full min-w-0 max-w-[42rem] flex-1 flex-col justify-center px-4">
-      <div className="flex items-center justify-center gap-3">
+    <motion.div
+      layout
+      className="flex h-full min-w-0 max-w-[46rem] flex-1 flex-col justify-center rounded-[28px] border border-white/10 bg-black/[0.24] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+    >
+      <div className="flex items-center justify-center gap-2 sm:gap-3">
         <IconButton onClick={onToggleShuffle} isActive={isShuffleEnabled}>
           <ShuffleIcon />
         </IconButton>
@@ -129,7 +135,7 @@ export default function PlaybackControls({
         </IconButton>
         <IconButton
           onClick={onTogglePlayback}
-          className="h-12 w-12 bg-spotify-green text-brand-black hover:bg-[#32d46a]"
+          className="h-12 w-12 border-white/25 bg-[linear-gradient(135deg,#f8fafc,#a7f3d0_36%,#67e8f9_70%,#f9a8d4)] text-black shadow-[0_14px_34px_rgba(103,232,249,0.22)] hover:bg-white"
         >
           <PlayPauseIcon isPlaying={isPlaying} />
         </IconButton>
@@ -149,13 +155,13 @@ export default function PlaybackControls({
       </div>
 
       <div className="mt-3 flex items-center gap-3">
-        <span className="w-10 text-right text-xs tabular-nums text-brand-grey">
+        <span className="w-10 text-right text-xs tabular-nums text-white/[0.48]">
           {formatTime(progress)}
         </span>
         <div className="relative flex-1 py-1">
-          <div className="absolute inset-y-1/2 left-0 right-0 h-[4px] -translate-y-1/2 rounded-full bg-white/[0.09]" />
+          <div className="absolute inset-y-1/2 left-0 right-0 h-[5px] -translate-y-1/2 rounded-full bg-white/[0.105]" />
           <div
-            className="absolute inset-y-1/2 left-0 h-[4px] -translate-y-1/2 rounded-full bg-spotify-green"
+            className="absolute inset-y-1/2 left-0 h-[5px] -translate-y-1/2 rounded-full bg-[linear-gradient(90deg,#34d399,#38bdf8,#f472b6,#fbbf24)] shadow-[0_0_20px_rgba(56,189,248,0.22)]"
             style={{ width: `${progressPercent}%` }}
           />
           <input
@@ -169,7 +175,7 @@ export default function PlaybackControls({
             aria-label="Seek"
           />
         </div>
-        <span className="w-10 text-xs tabular-nums text-brand-grey">
+        <span className="w-10 text-xs tabular-nums text-white/[0.48]">
           {formatTime(duration)}
         </span>
       </div>
