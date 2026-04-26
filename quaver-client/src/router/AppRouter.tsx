@@ -11,17 +11,12 @@ function RoutedApp() {
 
   useEffect(() => {
     if (path === routePaths.root || !route) {
-      navigate(isAuthenticated ? routePaths.app : routePaths.login, { replace: true });
+      navigate(routePaths.login, { replace: true });
       return;
     }
 
     if (route.requiresAuth && !isAuthenticated) {
       navigate(routePaths.login, { replace: true });
-      return;
-    }
-
-    if (route.guestOnly && isAuthenticated) {
-      navigate(routePaths.app, { replace: true });
     }
   }, [isAuthenticated, navigate, path, route]);
 
@@ -37,7 +32,7 @@ function RoutedApp() {
     return null;
   }
 
-  if ((route.requiresAuth && !isAuthenticated) || (route.guestOnly && isAuthenticated)) {
+  if (route.requiresAuth && !isAuthenticated) {
     return null;
   }
 

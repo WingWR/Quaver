@@ -12,7 +12,7 @@ export class BackendApiError extends Error {
   }
 }
 
-function resolveRequestUrl(path: string) {
+export function resolveBackendUrl(path: string) {
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
@@ -68,7 +68,7 @@ export async function backendRequest<T>(path: string, init: RequestInit = {}) {
   }
 
   try {
-    const response = await fetch(resolveRequestUrl(path), {
+    const response = await fetch(resolveBackendUrl(path), {
       ...rest,
       signal: controller.signal,
       headers: {
@@ -105,7 +105,7 @@ export function formatBackendError(error: unknown, fallback: string) {
   }
 
   if (error instanceof DOMException && error.name === "AbortError") {
-    return "请求超时，后端暂时没有响应。";
+    return "Request timed out. The backend did not respond.";
   }
 
   if (error instanceof TypeError) {
