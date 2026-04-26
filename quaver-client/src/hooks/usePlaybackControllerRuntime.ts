@@ -6,27 +6,23 @@ import {
   startBackendPlayback,
   updateBackendPlaybackState,
 } from "../features/library/api/client";
-import { useUiStore } from "../store/useUiStore";
-import type { Playlist, Track } from "../types/music";
-import { useQuaverStore } from "../store/useQuaverStore";
 import {
   addTrackToSpotifyQueue,
   addTracksToSpotifyPlaylist,
+  beginSpotifyBridgeAuthorization,
   pauseSpotifyPlayback,
+  seekSpotifyPlayback,
   setSpotifyRepeatMode,
   setSpotifyShuffle,
+  setSpotifyVolume,
+  skipToNextSpotifyTrack,
+  skipToPreviousSpotifyTrack,
   startSpotifyPlayback,
-  transferSpotifyPlayback,
-} from "../services/spotifyApi";
-import { beginSpotifyAuthorization } from "../services/spotifyAuth";
-import { getSpotifyPlayer } from "../services/spotifyPlayer";
-
-async function activateSpotifyElement() {
-  const player = getSpotifyPlayer();
-  if (player?.activateElement) {
-    await player.activateElement();
-  }
-}
+} from "../features/spotify/api/client";
+import type { SpotifyPlaybackState } from "../features/spotify/api/types";
+import { useQuaverStore } from "../store/useQuaverStore";
+import { useUiStore } from "../store/useUiStore";
+import type { Playlist, Track } from "../types/music";
 
 export function usePlaybackControllerRuntime() {
   const spotify = useQuaverStore((state) => state.spotify);
@@ -60,20 +56,19 @@ export function usePlaybackControllerRuntime() {
 
   async function connectSpotify() {
     if (!spotify.isConfigured) {
+      pushNotice({
+        message: spotify.error ?? "Spotify bridge is not configured on the backend yet.",
+        variant: "warning",
+        dedupeKey: "spotify-connect-unconfigured",
+      });
       return;
     }
 
-    await beginSpotifyAuthorization();
+    beginSpotifyBridgeAuthorization();
   }
 
-  async function ensureSpotifyDevice() {
-    if (!spotify.deviceId) {
-      throw new Error("Spotify player is not ready yet");
-    }
-
-    await activateSpotifyElement();
-    await transferSpotifyPlayback(spotify.deviceId, false);
-    return spotify.deviceId;
+  function spotifyDeviceId() {
+    return spotify.deviceId || undefined;
   }
 
   function currentBackendPlaybackSnapshot() {
@@ -131,99 +126,155 @@ export function usePlaybackControllerRuntime() {
     }
   }
 
+  function syncSpotifyPlaybackResponse(playback: SpotifyPlaybackState) {
+    syncPlayback({
+      queue: playback.queue,
+      currentTrackIndex: playback.currentTrackIndex,
+      isPlaying: playback.isPlaying,
+      progress: playback.progress,
+      volume: playback.volume,
+      playbackSource: playback.playbackSource ?? "spotify",
+      isShuffleEnabled: playback.isShuffleEnabled,
+      repeatMode: playback.repeatMode,
+    });
+  }
+
+  function warnSpotifyPlayback(error: unknown, dedupeKey: string) {
+    pushNotice({
+      message: formatBackendError(
+        error,
+        "Spotify playback is not ready. Make sure the backend bridge is authorized and a Spotify device is active.",
+      ),
+      variant: "warning",
+      dedupeKey,
+    });
+  }
+
+  function promptSpotifyConnection(dedupeKey: string) {
+    pushNotice({
+      message: "Connect Spotify first. Search results are Spotify tracks, so Quaver cannot play them locally.",
+      variant: "warning",
+      dedupeKey,
+    });
+    beginSpotifyBridgeAuthorization();
+  }
+
   async function togglePlayback() {
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
       togglePlaybackLocal();
       await syncBackendPlaybackSnapshot("playback-toggle");
       return;
     }
 
-    const player = getSpotifyPlayer();
-    if (player) {
-      await activateSpotifyElement();
-      await player.togglePlay();
-      return;
-    }
+    try {
+      if (isPlaying) {
+        syncSpotifyPlaybackResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+        return;
+      }
 
-    if (isPlaying) {
-      await pauseSpotifyPlayback(spotify.deviceId);
-      return;
-    }
-
-    const currentTrack = queue[currentTrackIndex];
-    if (currentTrack?.spotifyUri) {
-      await startSpotifyPlayback({
-        deviceId: spotify.deviceId,
-        uris: [currentTrack.spotifyUri],
-      });
+      const currentTrack = queue[currentTrackIndex];
+      if (currentTrack?.spotifyUri) {
+        syncSpotifyPlaybackResponse(
+          await startSpotifyPlayback({
+            deviceId: spotifyDeviceId(),
+            uris: [currentTrack.spotifyUri],
+          }),
+        );
+      }
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-toggle");
     }
   }
 
   async function playNext() {
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
       playNextLocal();
       await syncBackendPlaybackSnapshot("playback-next");
       return;
     }
 
-    await activateSpotifyElement();
-    await getSpotifyPlayer()?.nextTrack();
+    try {
+      syncSpotifyPlaybackResponse(await skipToNextSpotifyTrack(spotifyDeviceId()));
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-next");
+    }
   }
 
   async function playPrevious() {
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
       playPreviousLocal();
       await syncBackendPlaybackSnapshot("playback-previous");
       return;
     }
 
-    await activateSpotifyElement();
-    await getSpotifyPlayer()?.previousTrack();
+    try {
+      syncSpotifyPlaybackResponse(await skipToPreviousSpotifyTrack(spotifyDeviceId()));
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-previous");
+    }
   }
 
   async function seek(progress: number) {
     setProgress(progress);
 
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
       await syncBackendPlaybackSnapshot("playback-seek");
       return;
     }
 
-    await getSpotifyPlayer()?.seek(progress * 1000);
+    try {
+      syncSpotifyPlaybackResponse(await seekSpotifyPlayback(progress * 1000, spotifyDeviceId()));
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-seek");
+    }
   }
 
   async function updateVolume(volume: number) {
     setVolume(volume);
 
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
       await syncBackendPlaybackSnapshot("playback-volume");
       return;
     }
 
-    await getSpotifyPlayer()?.setVolume(volume / 100);
+    try {
+      syncSpotifyPlaybackResponse(await setSpotifyVolume(volume, spotifyDeviceId()));
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-volume");
+    }
   }
 
   async function playPlaylistTrack(playlist: Playlist, index: number) {
-    if (!spotify.isAuthenticated || !spotify.deviceId || playlist.source !== "spotify") {
+    if (playlist.source === "spotify" && !spotify.isAuthenticated) {
+      syncPlayback({
+        queue: playlist.tracks,
+        currentTrackIndex: index,
+        isPlaying: false,
+        progress: 0,
+        playbackSource: "backend",
+      });
+      promptSpotifyConnection(`spotify-connect-playlist-${playlist.id}`);
+      return;
+    }
+
+    if (playlist.source !== "spotify") {
       setQueue(playlist.tracks, index, "backend");
       await startBackendPlaybackSnapshot(playlist.tracks, index, `playback-playlist-${playlist.id}`);
       return;
     }
 
-    const deviceId = await ensureSpotifyDevice();
-    await startSpotifyPlayback({
-      deviceId,
-      contextUri: playlist.spotifyUri,
-      offsetPosition: index,
-      positionMs: 0,
-    });
-    syncPlayback({
-      queue: playlist.tracks,
-      currentTrackIndex: index,
-      isPlaying: true,
-      progress: 0,
-      playbackSource: "spotify",
-    });
+    try {
+      syncSpotifyPlaybackResponse(
+        await startSpotifyPlayback({
+          deviceId: spotifyDeviceId(),
+          contextUri: playlist.spotifyUri,
+          offsetPosition: index,
+          positionMs: 0,
+        }),
+      );
+    } catch (error) {
+      warnSpotifyPlayback(error, `spotify-playlist-${playlist.id}`);
+    }
   }
 
   async function playTrackList(tracks: Track[], startIndex = 0) {
@@ -232,29 +283,51 @@ export function usePlaybackControllerRuntime() {
       .map((track) => track.spotifyUri)
       .filter((uri): uri is string => Boolean(uri));
 
-    if (!spotify.isAuthenticated || !spotify.deviceId || !spotifyUris.length) {
+    if (spotifyUris.length && !spotify.isAuthenticated) {
+      syncPlayback({
+        queue: tracks,
+        currentTrackIndex: startIndex,
+        isPlaying: false,
+        progress: 0,
+        playbackSource: "backend",
+      });
+      promptSpotifyConnection("spotify-connect-track-list");
+      return;
+    }
+
+    if (!spotifyUris.length) {
       setQueue(tracks, startIndex, "backend");
       await startBackendPlaybackSnapshot(tracks, startIndex, "playback-track-list");
       return;
     }
 
-    const deviceId = await ensureSpotifyDevice();
-    await startSpotifyPlayback({
-      deviceId,
-      uris: spotifyUris,
-      positionMs: 0,
-    });
-    syncPlayback({
-      queue: queueSlice,
-      currentTrackIndex: 0,
-      isPlaying: true,
-      progress: 0,
-      playbackSource: "spotify",
-    });
+    try {
+      syncSpotifyPlaybackResponse(
+        await startSpotifyPlayback({
+          deviceId: spotifyDeviceId(),
+          uris: spotifyUris,
+          positionMs: 0,
+        }),
+      );
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-track-list");
+    }
   }
 
   async function playQueueTrack(track: Track, index: number) {
-    if (!spotify.isAuthenticated || !spotify.deviceId || !track.spotifyUri) {
+    if (track.spotifyUri && !spotify.isAuthenticated) {
+      syncPlayback({
+        queue,
+        currentTrackIndex: index,
+        isPlaying: false,
+        progress: 0,
+        playbackSource: "backend",
+      });
+      promptSpotifyConnection(`spotify-connect-queue-${track.id}`);
+      return;
+    }
+
+    if (!track.spotifyUri) {
       setCurrentTrackIndex(index);
       await syncBackendPlaybackSnapshot("playback-queue-track");
       return;
@@ -264,22 +337,22 @@ export function usePlaybackControllerRuntime() {
   }
 
   async function toggleShuffleMode() {
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
       toggleShuffleLocal();
       await syncBackendPlaybackSnapshot("playback-shuffle");
       return;
     }
 
     const nextValue = !isShuffleEnabled;
-    await setSpotifyShuffle(nextValue, spotify.deviceId);
-    syncPlayback({
-      isShuffleEnabled: nextValue,
-      playbackSource: "spotify",
-    });
+    try {
+      syncSpotifyPlaybackResponse(await setSpotifyShuffle(nextValue, spotifyDeviceId()));
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-shuffle");
+    }
   }
 
   async function cycleRepeatMode() {
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated || !spotify.deviceId) {
+    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
       cycleRepeatModeLocal();
       await syncBackendPlaybackSnapshot("playback-repeat");
       return;
@@ -288,11 +361,11 @@ export function usePlaybackControllerRuntime() {
     const nextMode =
       repeatMode === "off" ? "context" : repeatMode === "context" ? "track" : "off";
 
-    await setSpotifyRepeatMode(nextMode, spotify.deviceId);
-    syncPlayback({
-      repeatMode: nextMode,
-      playbackSource: "spotify",
-    });
+    try {
+      syncSpotifyPlaybackResponse(await setSpotifyRepeatMode(nextMode, spotifyDeviceId()));
+    } catch (error) {
+      warnSpotifyPlayback(error, "spotify-repeat");
+    }
   }
 
   async function queueTrackNext(track: Track) {
@@ -311,7 +384,7 @@ export function usePlaybackControllerRuntime() {
         pushNotice({
           message: formatBackendError(
             error,
-            "队列后端暂未接入，当前只保留了界面层的插队状态。",
+            "Queue backend is unavailable. The track was only inserted locally.",
           ),
           variant: "warning",
           dedupeKey: `queue-next-${track.id}`,
@@ -323,10 +396,13 @@ export function usePlaybackControllerRuntime() {
       existingIndex === -1 &&
       playbackSource === "spotify" &&
       spotify.isAuthenticated &&
-      spotify.deviceId &&
       track.spotifyUri
     ) {
-      await addTrackToSpotifyQueue(track.spotifyUri, spotify.deviceId);
+      try {
+        syncSpotifyPlaybackResponse(await addTrackToSpotifyQueue(track.spotifyUri, spotifyDeviceId()));
+      } catch (error) {
+        warnSpotifyPlayback(error, `spotify-queue-next-${track.id}`);
+      }
     }
   }
 
@@ -347,7 +423,7 @@ export function usePlaybackControllerRuntime() {
         pushNotice({
           message: formatBackendError(
             error,
-            "队列后端暂未接入，当前只保留了界面层的排队状态。",
+            "Queue backend is unavailable. The track was only queued locally.",
           ),
           variant: "warning",
           dedupeKey: `queue-append-${track.id}`,
@@ -358,10 +434,13 @@ export function usePlaybackControllerRuntime() {
     if (
       playbackSource === "spotify" &&
       spotify.isAuthenticated &&
-      spotify.deviceId &&
       track.spotifyUri
     ) {
-      await addTrackToSpotifyQueue(track.spotifyUri, spotify.deviceId);
+      try {
+        syncSpotifyPlaybackResponse(await addTrackToSpotifyQueue(track.spotifyUri, spotifyDeviceId()));
+      } catch (error) {
+        warnSpotifyPlayback(error, `spotify-queue-append-${track.id}`);
+      }
     }
 
     appendTrackToQueueLocal(track);
@@ -383,7 +462,7 @@ export function usePlaybackControllerRuntime() {
       pushNotice({
         message: formatBackendError(
           error,
-          "歌单后端暂未接入，当前无法把歌曲写入歌单。",
+          "Playlist backend is unavailable. The track could not be added.",
         ),
         variant: "warning",
         dedupeKey: `playlist-add-${playlist.id}-${track.id}`,

@@ -1,27 +1,24 @@
 import { startTransition, useEffect } from "react";
-import { isSpotifyConfigured } from "../config/spotify";
-import { useQuaverStore } from "../store/useQuaverStore";
+import { formatBackendError } from "../api/http";
 import {
+  consumeSpotifyBridgeRedirect,
+  fetchSpotifyAuthStatus,
   fetchSpotifyPlaybackState,
   fetchSpotifyPlaylistTracks,
   fetchSpotifyPlaylists,
   fetchSpotifyProfile,
-  fetchSpotifyQueue,
-  mapSpotifyTrack,
-  transferSpotifyPlayback,
-} from "../services/spotifyApi";
-import {
-  completeSpotifyAuthorization,
-  getStoredSpotifySession,
-} from "../services/spotifyAuth";
-import { destroySpotifyPlayer, initializeSpotifyPlayer } from "../services/spotifyPlayer";
+} from "../features/spotify/api/client";
+import { useQuaverStore } from "../store/useQuaverStore";
+
+const SPOTIFY_UNAVAILABLE_MESSAGE =
+  "Spotify bridge is not ready. Connect Spotify after the backend is running.";
 
 function parseSpotifyError(error: unknown) {
-  const message = error instanceof Error ? error.message : "Unknown Spotify error";
+  const message = formatBackendError(error, SPOTIFY_UNAVAILABLE_MESSAGE);
 
   if (message.includes("PREMIUM_REQUIRED")) {
     return {
-      message: "Spotify Web Playback SDK requires a Premium account for browser playback.",
+      message: "Spotify playback requires a Premium account.",
       requiresPremium: true,
     };
   }
@@ -32,33 +29,15 @@ function parseSpotifyError(error: unknown) {
   };
 }
 
-async function syncSpotifyQueueState() {
+async function syncSpotifyPlaybackState() {
   const { syncPlayback, setSpotifyState } = useQuaverStore.getState();
 
   try {
-    const [queueState, playbackState] = await Promise.all([
-      fetchSpotifyQueue(),
-      fetchSpotifyPlaybackState(),
-    ]);
-
-    const currentTrack = mapSpotifyTrack(queueState?.currently_playing ?? playbackState?.item);
-    const nextTracks = (queueState?.queue ?? [])
-      .map((track: any) => mapSpotifyTrack(track))
-      .filter(Boolean);
-
-    if (!currentTrack) {
-      return;
-    }
-
-    syncPlayback({
-      queue: [currentTrack, ...nextTracks],
-      currentTrackIndex: 0,
-      isPlaying: playbackState?.is_playing ?? true,
-      progress: Math.round((playbackState?.progress_ms ?? 0) / 1000),
-      volume: playbackState?.device?.volume_percent,
-      playbackSource: "spotify",
-      isShuffleEnabled: playbackState?.shuffle_state ?? false,
-      repeatMode: playbackState?.repeat_state ?? "off",
+    const playback = await fetchSpotifyPlaybackState();
+    syncPlayback(playback);
+    setSpotifyState({
+      error: null,
+      requiresPremium: false,
     });
   } catch (error) {
     const parsed = parseSpotifyError(error);
@@ -76,139 +55,77 @@ export function useSpotifyBootstrap() {
   const replacePlaylistsBySource = useQuaverStore((state) => state.replacePlaylistsBySource);
   const updatePlaylistTracks = useQuaverStore((state) => state.updatePlaylistTracks);
   const setSpotifyState = useQuaverStore((state) => state.setSpotifyState);
-  const syncPlayback = useQuaverStore((state) => state.syncPlayback);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
+    const redirectResult = consumeSpotifyBridgeRedirect();
 
     async function bootstrapSpotify() {
-      if (!isSpotifyConfigured()) {
-        setSpotifyState({ isConfigured: false });
-        return;
+      if (redirectResult.status === "error") {
+        setSpotifyState({
+          error: redirectResult.error ?? "Spotify authorization failed.",
+          isAuthenticated: false,
+        });
       }
 
-      setSpotifyState({ isConfigured: true, error: null });
-
       try {
-        const session = await completeSpotifyAuthorization();
-        if (!session || cancelled) {
+        const status = await fetchSpotifyAuthStatus(controller.signal);
+        if (controller.signal.aborted) {
           return;
         }
 
-        startTransition(() => {
-          setSpotifyState({
-            isAuthenticated: true,
-            accessToken: session.accessToken,
-            error: null,
-          });
+        setSpotifyState({
+          isConfigured: status.enabled,
+          isAuthenticated: status.authorized,
+          deviceId: null,
+          userName: status.developerAccount || null,
+          error:
+            redirectResult.status === "connected"
+              ? null
+              : redirectResult.error ?? (status.authorized ? null : status.message ?? null),
+          requiresPremium: false,
         });
 
+        if (!status.enabled || !status.authorized) {
+          replacePlaylistsBySource("spotify", []);
+          return;
+        }
+
         const [profile, spotifyPlaylists] = await Promise.all([
-          fetchSpotifyProfile(),
-          fetchSpotifyPlaylists(),
+          fetchSpotifyProfile(controller.signal),
+          fetchSpotifyPlaylists(controller.signal),
         ]);
 
-        if (cancelled) {
+        if (controller.signal.aborted) {
           return;
         }
 
         startTransition(() => {
           setSpotifyState({
-            userName: profile.display_name ?? "Spotify listener",
+            userName: profile.displayName ?? status.developerAccount ?? "Spotify listener",
+            error: null,
           });
           replacePlaylistsBySource("spotify", spotifyPlaylists);
         });
       } catch (error) {
-        if (cancelled) {
+        if (controller.signal.aborted) {
           return;
         }
 
         const parsed = parseSpotifyError(error);
         setSpotifyState({
+          isConfigured: false,
+          isAuthenticated: false,
           error: parsed.message,
           requiresPremium: parsed.requiresPremium,
-          isAuthenticated: Boolean(getStoredSpotifySession()),
         });
       }
     }
 
     bootstrapSpotify();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [replacePlaylistsBySource, setSpotifyState]);
-
-  useEffect(() => {
-    if (!spotify.accessToken || !isSpotifyConfigured()) {
-      return;
-    }
-
-    let cancelled = false;
-
-    initializeSpotifyPlayer({
-      initialVolume: useQuaverStore.getState().volume / 100,
-      onReady: async (deviceId) => {
-        if (cancelled) {
-          return;
-        }
-
-        setSpotifyState({
-          deviceId,
-          isAuthenticated: true,
-          error: null,
-        });
-
-        try {
-          await transferSpotifyPlayback(deviceId, false);
-          await syncSpotifyQueueState();
-        } catch (error) {
-          const parsed = parseSpotifyError(error);
-          setSpotifyState({
-            error: parsed.message,
-            requiresPremium: parsed.requiresPremium,
-          });
-        }
-      },
-      onOffline: () => {
-        if (!cancelled) {
-          setSpotifyState({ deviceId: null });
-        }
-      },
-      onStateChange: (state) => {
-        if (cancelled || !state?.track_window?.current_track) {
-          return;
-        }
-
-        const currentTrack = mapSpotifyTrack(state.track_window.current_track);
-        const nextTracks = (state.track_window.next_tracks ?? [])
-          .map((track: any) => mapSpotifyTrack(track))
-          .filter(Boolean);
-
-        if (!currentTrack) {
-          return;
-        }
-
-        syncPlayback({
-          queue: [currentTrack, ...nextTracks],
-          currentTrackIndex: 0,
-          isPlaying: !state.paused,
-          progress: Math.round((state.position ?? 0) / 1000),
-          playbackSource: "spotify",
-        });
-      },
-      onError: (message) => {
-        if (!cancelled) {
-          setSpotifyState({ error: message });
-        }
-      },
-    });
-
-    return () => {
-      cancelled = true;
-      destroySpotifyPlayer();
-    };
-  }, [setSpotifyState, spotify.accessToken, syncPlayback]);
 
   useEffect(() => {
     const selectedPlaylist = playlists.find((playlist) => playlist.id === selectedPlaylistId);
@@ -217,23 +134,26 @@ export function useSpotifyBootstrap() {
       !selectedPlaylist ||
       !selectedPlaylist.spotifyId ||
       selectedPlaylist.tracks.length > 0 ||
-      !getStoredSpotifySession()
+      !spotify.isAuthenticated
     ) {
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
     const playlistId = selectedPlaylist.id;
     const spotifyPlaylistId = selectedPlaylist.spotifyId;
 
     async function loadPlaylistTracks() {
       try {
-        const tracks = await fetchSpotifyPlaylistTracks(spotifyPlaylistId);
-        if (!cancelled) {
+        const tracks = await fetchSpotifyPlaylistTracks(
+          spotifyPlaylistId,
+          controller.signal,
+        );
+        if (!controller.signal.aborted) {
           updatePlaylistTracks(playlistId, tracks);
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           const parsed = parseSpotifyError(error);
           setSpotifyState({ error: parsed.message });
         }
@@ -242,22 +162,26 @@ export function useSpotifyBootstrap() {
 
     loadPlaylistTracks();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [playlists, selectedPlaylistId, setSpotifyState, updatePlaylistTracks]);
+    return () => controller.abort();
+  }, [
+    playlists,
+    selectedPlaylistId,
+    setSpotifyState,
+    spotify.isAuthenticated,
+    updatePlaylistTracks,
+  ]);
 
   useEffect(() => {
-    if (!spotify.accessToken) {
+    if (!spotify.isAuthenticated) {
       return;
     }
 
     const timer = window.setInterval(() => {
-      syncSpotifyQueueState();
+      syncSpotifyPlaybackState();
     }, 15000);
 
-    syncSpotifyQueueState();
+    syncSpotifyPlaybackState();
 
     return () => window.clearInterval(timer);
-  }, [spotify.accessToken]);
+  }, [spotify.isAuthenticated]);
 }

@@ -18,7 +18,7 @@ export function searchTracksWithAgent(
       : undefined,
     body: JSON.stringify({
       query: input.query,
-      model: input.model ?? appConfig.agent.model,
+      model: input.model ?? appConfig.agent.searchModel,
       limit: input.limit ?? 8,
       selectedPlaylistId: input.selectedPlaylistId,
       playlistIds: input.playlistIds ?? [],

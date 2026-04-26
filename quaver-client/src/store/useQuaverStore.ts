@@ -13,7 +13,6 @@ import type {
 interface SpotifyState {
   isConfigured: boolean;
   isAuthenticated: boolean;
-  accessToken: string | null;
   deviceId: string | null;
   userName: string | null;
   error: string | null;
@@ -166,7 +165,6 @@ function resolveSelectedPlaylistId(playlists: Playlist[], candidates: Array<stri
 const initialSpotifyState: SpotifyState = {
   isConfigured: false,
   isAuthenticated: false,
-  accessToken: null,
   deviceId: null,
   userName: null,
   error: null,

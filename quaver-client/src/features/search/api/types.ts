@@ -17,6 +17,7 @@ export interface AgentTrackSearchResponse {
   total: number;
   model?: string;
   requestId?: string;
-  status: "ready" | "empty";
+  status: "ready" | "empty" | "error";
   tookMs?: number;
+  message?: string;
 }
