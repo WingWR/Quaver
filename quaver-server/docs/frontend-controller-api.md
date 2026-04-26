@@ -16,34 +16,14 @@ Response shape:
 
 ```json
 {
-  "playlists": [
-    {
-      "id": "playlist-demo-user-default",
-      "name": "Backend Favorites",
-      "description": "Your backend-managed playlist.",
-      "cover": "data:image/svg+xml,...",
-      "accent": "#1DB954",
-      "tracks": [],
-      "source": "backend",
-      "spotifyId": null,
-      "spotifyUri": null,
-      "ownerName": null
-    }
-  ],
-  "selectedPlaylistId": "playlist-demo-user-default",
-  "playback": {
-    "queue": [],
-    "currentTrackIndex": 0,
-    "isPlaying": false,
-    "progress": 0,
-    "volume": 72,
-    "playbackSource": "backend",
-    "isShuffleEnabled": false,
-    "repeatMode": "off"
-  },
+  "playlists": [],
+  "selectedPlaylistId": null,
+  "playback": null,
   "serverTime": "2026-04-16T19:00:00"
 }
 ```
+
+An empty `playlists` array is a valid state. The backend no longer creates a default playlist.
 
 ### `POST /library/queue`
 
@@ -128,8 +108,8 @@ Request body:
 ```json
 {
   "title": "Quaver Agent Session",
-  "model": "gpt-4.1-mini",
-  "spotifyDeveloperAccount": "developer-account",
+  "model": "gpt-5",
+  "spotifyDeveloperAccount": "drinkinhuang@gmail.com",
   "metadata": {
     "workspace": "agent"
   }
@@ -145,8 +125,8 @@ Request body:
 ```json
 {
   "content": "给我播放 chill 粤语歌",
-  "model": "gpt-4.1-mini",
-  "spotifyDeveloperAccount": "developer-account",
+  "model": "gpt-5",
+  "spotifyDeveloperAccount": "drinkinhuang@gmail.com",
   "metadata": {
     "workspace": "agent"
   }
@@ -164,12 +144,10 @@ Request body:
   "query": "粤语 chill",
   "model": "gpt-4.1-mini",
   "limit": 8,
-  "selectedPlaylistId": "playlist-demo-user-default",
-  "playlistIds": [
-    "playlist-demo-user-default"
-  ],
+  "selectedPlaylistId": null,
+  "playlistIds": [],
   "queueTrackIds": [],
-  "spotifyDeveloperAccount": "developer-account",
+  "spotifyDeveloperAccount": "drinkinhuang@gmail.com",
   "metadata": {
     "scope": "music_search",
     "workspace": "player_bar"
@@ -195,6 +173,20 @@ Response shape:
 
 Returns whether AI and Spotify bridge runtime prerequisites are configured.
 
+Response shape:
+
+```json
+{
+  "aiKeyConfigured": false,
+  "aiModel": "gpt-5",
+  "aiSearchModel": "gpt-4.1-mini",
+  "aiAgentModel": "gpt-5",
+  "aiBaseUrl": "https://api.openai.com/v1",
+  "spotifyBridgeEnabled": true,
+  "spotifyBridgeAuthorized": false
+}
+```
+
 ## Spotify Module
 
 ### Auth
@@ -203,14 +195,30 @@ Returns whether AI and Spotify bridge runtime prerequisites are configured.
 - `GET /spotify/auth/callback?code=...&state=...`
 - `GET /spotify/auth/status`
 
+Frontend should start Spotify connection by navigating the browser to
+`/spotify/auth/login`. The backend owns the OAuth state, exchanges the callback
+code, stores/refreshes tokens, and then redirects back to the configured
+frontend base URL with `spotifyBridge=connected` or `spotifyBridge=error`.
+If `quaver.spotify.bridge-refresh-token` is configured, `/spotify/auth/status`
+can connect the backend bridge from that refresh token without browser-side
+Spotify tokens.
+
 ### Catalog
 
+- `GET /spotify/me/profile`
+- `GET /spotify/me/playlists?limit=24`
+- `GET /spotify/playlists/{playlistId}/tracks?limit=50`
 - `GET /spotify/tracks/search?q={query}&limit=8`
 - `GET /spotify/tracks/{trackId}`
+
+Track search and track lookup use Spotify application credentials and do not
+require the bridge account OAuth flow to be completed first. Profile and
+playlist endpoints use the backend-held bridge authorization.
 
 ### Playback
 
 - `GET /spotify/playback/state`
+- `GET /spotify/playback/devices`
 - `POST /spotify/playback/play`
 - `POST /spotify/playback/pause`
 - `POST /spotify/playback/next`
@@ -218,10 +226,12 @@ Returns whether AI and Spotify bridge runtime prerequisites are configured.
 - `POST /spotify/playback/seek`
 - `POST /spotify/playback/shuffle`
 - `POST /spotify/playback/repeat`
+- `POST /spotify/playback/volume`
 - `POST /spotify/playback/queue`
 - `POST /spotify/playback/playlists/{playlistId}/tracks`
 
 These endpoints use the backend-held Spotify bridge authorization, not browser-side Spotify tokens.
+Playback still requires an authorized Spotify account and a reachable Spotify device.
 
 ## Shared Model Notes
 

@@ -21,7 +21,15 @@ public class SpotifyAuthStatusDto {
 
     private String redirectUri;
 
+    private String defaultDeviceId;
+
     private List<String> scopes;
 
     private LocalDateTime expiresAt;
+
+    private boolean refreshTokenConfigured;
+
+    private String connectionMode;
+
+    private String message;
 }

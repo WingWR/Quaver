@@ -8,7 +8,10 @@ import com.quaver.spotify.dto.SpotifyQueueCommandRequest;
 import com.quaver.spotify.dto.SpotifyRepeatModeRequest;
 import com.quaver.spotify.dto.SpotifySeekRequest;
 import com.quaver.spotify.dto.SpotifyShuffleRequest;
+import com.quaver.spotify.dto.SpotifyVolumeRequest;
+import com.quaver.spotify.model.SpotifyDevice;
 import com.quaver.spotify.service.SpotifyPlaybackBridgeService;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +32,11 @@ public class SpotifyPlaybackController {
     @GetMapping("/state")
     public PlaybackStateView state() {
         return spotifyPlaybackBridgeService.getPlaybackState();
+    }
+
+    @GetMapping("/devices")
+    public List<SpotifyDevice> devices() {
+        return spotifyPlaybackBridgeService.listDevices();
     }
 
     @PostMapping("/play")
@@ -72,6 +80,11 @@ public class SpotifyPlaybackController {
     @PostMapping("/repeat")
     public PlaybackStateView repeat(@RequestBody SpotifyRepeatModeRequest request) {
         return spotifyPlaybackBridgeService.setRepeatMode(RepeatMode.fromValue(request.getMode()), request.getDeviceId());
+    }
+
+    @PostMapping("/volume")
+    public PlaybackStateView volume(@RequestBody SpotifyVolumeRequest request) {
+        return spotifyPlaybackBridgeService.setVolume(request.getVolume() == null ? 72 : request.getVolume(), request.getDeviceId());
     }
 
     @PostMapping("/queue")

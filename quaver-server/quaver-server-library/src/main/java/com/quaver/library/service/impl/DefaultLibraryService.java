@@ -8,7 +8,6 @@ import com.quaver.common.model.music.PlaybackStateView;
 import com.quaver.common.model.music.PlaylistView;
 import com.quaver.common.model.music.RepeatMode;
 import com.quaver.common.model.music.TrackView;
-import com.quaver.common.support.MusicProfileSupport;
 import com.quaver.common.support.RedisKeys;
 import com.quaver.library.dto.LibraryBootstrapResponse;
 import com.quaver.library.dto.LibraryMutationResponse;
@@ -74,7 +73,7 @@ public class DefaultLibraryService implements LibraryService {
     @Transactional
     public LibraryBootstrapResponse bootstrap() {
         String userId = userContextService.getCurrentUserId();
-        ensureDefaultPlaylist(userId);
+        removeEmptyLegacyDefaultPlaylist(userId);
         List<PlaylistView> playlists = listPlaylists();
         PlaybackStateView playbackState = getPlaybackState();
         return new LibraryBootstrapResponse(
@@ -127,7 +126,6 @@ public class DefaultLibraryService implements LibraryService {
     @Transactional
     public LibraryMutationResponse addTrackToPlaylist(String playlistId, String trackId) {
         String userId = userContextService.getCurrentUserId();
-        ensureDefaultPlaylist(userId);
         PlaylistEntity playlistEntity = playlistMapper.selectById(playlistId);
         if (playlistEntity == null || !Objects.equals(userId, playlistEntity.getUserId())) {
             throw new NotFoundException("Playlist does not exist.");
@@ -426,24 +424,18 @@ public class DefaultLibraryService implements LibraryService {
         );
     }
 
-    private void ensureDefaultPlaylist(String userId) {
-        List<PlaylistEntity> playlistEntities = playlistMapper.selectList(Wrappers.lambdaQuery(PlaylistEntity.class)
-                .eq(PlaylistEntity::getUserId, userId)
-                .last("limit 1"));
-        if (!playlistEntities.isEmpty()) {
+    private void removeEmptyLegacyDefaultPlaylist(String userId) {
+        String legacyPlaylistId = "playlist-" + userId + "-default";
+        PlaylistEntity playlist = playlistMapper.selectById(legacyPlaylistId);
+        if (playlist == null) {
             return;
         }
 
-        PlaylistEntity playlist = new PlaylistEntity();
-        playlist.setId("playlist-" + userId + "-default");
-        playlist.setUserId(userId);
-        playlist.setName("Backend Favorites");
-        playlist.setDescription("Your backend-managed playlist. Agent search results and manual additions can be stored here.");
-        playlist.setCover(MusicProfileSupport.createPlaylistCover("Backend Favorites"));
-        playlist.setAccent("#1DB954");
-        playlist.setSource(PlaybackSource.BACKEND.getValue());
-        playlist.setVersion(1);
-        playlistMapper.insert(playlist);
+        Long trackCount = playlistTrackMapper.selectCount(Wrappers.lambdaQuery(PlaylistTrackEntity.class)
+                .eq(PlaylistTrackEntity::getPlaylistId, legacyPlaylistId));
+        if (trackCount == null || trackCount == 0) {
+            playlistMapper.deleteById(legacyPlaylistId);
+        }
     }
 
     private TrackView toTrackView(TrackEntity entity) {

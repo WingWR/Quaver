@@ -11,6 +11,7 @@ import com.quaver.agent.dto.SendAgentMessageRequest;
 import com.quaver.agent.dto.SendAgentMessageResponse;
 import com.quaver.agent.dto.AgentTrackSearchRequest;
 import com.quaver.agent.dto.AgentTrackSearchResponse;
+import com.quaver.agent.ai.AgentAiService;
 import com.quaver.agent.entity.AgentConversationEntity;
 import com.quaver.agent.entity.AgentMessageEntity;
 import com.quaver.agent.mapper.AgentConversationMapper;
@@ -44,6 +45,7 @@ public class DefaultAgentConversationService implements AgentConversationService
     private final AgentMessageMapper messageMapper;
     private final AgentCommandParser agentCommandParser;
     private final AgentTrackSearchService agentTrackSearchService;
+    private final AgentAiService agentAiService;
     private final LibraryService libraryService;
     private final QuaverAiProperties aiProperties;
     private final SpotifyProperties spotifyProperties;
@@ -56,6 +58,7 @@ public class DefaultAgentConversationService implements AgentConversationService
             AgentMessageMapper messageMapper,
             AgentCommandParser agentCommandParser,
             AgentTrackSearchService agentTrackSearchService,
+            AgentAiService agentAiService,
             LibraryService libraryService,
             QuaverAiProperties aiProperties,
             SpotifyProperties spotifyProperties,
@@ -67,6 +70,7 @@ public class DefaultAgentConversationService implements AgentConversationService
         this.messageMapper = messageMapper;
         this.agentCommandParser = agentCommandParser;
         this.agentTrackSearchService = agentTrackSearchService;
+        this.agentAiService = agentAiService;
         this.libraryService = libraryService;
         this.aiProperties = aiProperties;
         this.spotifyProperties = spotifyProperties;
@@ -98,7 +102,7 @@ public class DefaultAgentConversationService implements AgentConversationService
         entity.setId(UUID.randomUUID().toString());
         entity.setUserId(userId);
         entity.setTitle(request.getTitle() == null || request.getTitle().isBlank() ? "Quaver Agent Session" : request.getTitle());
-        entity.setModel(request.getModel() == null || request.getModel().isBlank() ? aiProperties.getModel() : request.getModel());
+        entity.setModel(request.getModel() == null || request.getModel().isBlank() ? aiProperties.getAgentModel() : request.getModel());
         entity.setStatus("idle");
         entity.setIsDefaultConversation(!hasConversation);
         entity.setMetadata(request.getMetadata());
@@ -116,15 +120,23 @@ public class DefaultAgentConversationService implements AgentConversationService
             throw new NotFoundException("Conversation does not exist.");
         }
 
-        AgentMessageEntity userMessage = saveMessage(conversation, "user", request.getContent(), request.getModel(),
+        String assistantModel = resolveAgentModel(request.getModel(), conversation.getModel());
+        AgentMessageEntity userMessage = saveMessage(conversation, "user", request.getContent(), assistantModel,
                 List.of(operation("status", "Message received", "User message stored for parsing.", "completed")), request.getMetadata());
 
         ParsedAgentCommand command = agentCommandParser.parse(request.getContent());
+        String deterministicReply = buildAssistantReply(command, request);
+        String assistantReply = agentAiService.composeAgentReply(
+                request.getContent(),
+                command,
+                deterministicReply,
+                assistantModel
+        );
         AgentMessageEntity assistantMessage = saveMessage(
                 conversation,
                 "assistant",
-                buildAssistantReply(command, request),
-                request.getModel() == null || request.getModel().isBlank() ? conversation.getModel() : request.getModel(),
+                assistantReply,
+                assistantModel,
                 buildOperations(command, request),
                 Map.of("intent", command.intent().name())
         );
@@ -144,9 +156,12 @@ public class DefaultAgentConversationService implements AgentConversationService
     public AgentRuntimeStatusDto getRuntimeStatus() {
         return new AgentRuntimeStatusDto(
                 aiProperties.getApiKey() != null && !aiProperties.getApiKey().isBlank(),
-                aiProperties.getModel(),
+                aiProperties.getAgentModel(),
+                aiProperties.getSearchModel(),
+                aiProperties.getAgentModel(),
+                aiProperties.getBaseUrl(),
                 spotifyProperties.isEnabled(),
-                spotifyAuthService.getValidAccessToken().isPresent()
+                isSpotifyBridgeAuthorized()
         );
     }
 
@@ -155,7 +170,7 @@ public class DefaultAgentConversationService implements AgentConversationService
             case SEARCH -> {
                 AgentTrackSearchResponse response = agentTrackSearchService.search(new AgentTrackSearchRequest(
                         command.query(),
-                        request.getModel(),
+                        aiProperties.getSearchModel(),
                         5,
                         null,
                         List.of(),
@@ -172,7 +187,7 @@ public class DefaultAgentConversationService implements AgentConversationService
             case PLAY -> {
                 AgentTrackSearchResponse response = agentTrackSearchService.search(new AgentTrackSearchRequest(
                         command.query().isBlank() ? request.getContent() : command.query(),
-                        request.getModel(),
+                        aiProperties.getSearchModel(),
                         8,
                         null,
                         List.of(),
@@ -191,7 +206,7 @@ public class DefaultAgentConversationService implements AgentConversationService
             case PAUSE -> "Pause command received. The command parser and conversation pipeline are active; detailed playback orchestration can be expanded next.";
             case NEXT -> "Next-track command received. The current implementation records the intent and keeps the command path ready for later playback orchestration.";
             case PREVIOUS -> "Previous-track command received. The current implementation records the intent and keeps the command path ready for later playback orchestration.";
-            case CHAT -> "Conversation pipeline is available. This stage stores messages, parses simple music intents, and leaves deeper planning and LLM execution for the next iteration.";
+            case CHAT -> "Conversation pipeline is available. This stage stores messages, parses music intents, and uses the configured AI model for assistant reply composition when the API key is present.";
         };
     }
 
@@ -265,5 +280,23 @@ public class DefaultAgentConversationService implements AgentConversationService
 
     private AgentOperationDto operation(String type, String title, String detail, String status) {
         return new AgentOperationDto(UUID.randomUUID().toString(), type, title, detail, status, LocalDateTime.now(clock).toString());
+    }
+
+    private String resolveAgentModel(String requestedModel, String conversationModel) {
+        if (requestedModel != null && !requestedModel.isBlank()) {
+            return requestedModel;
+        }
+        if (conversationModel != null && !conversationModel.isBlank()) {
+            return conversationModel;
+        }
+        return aiProperties.getAgentModel();
+    }
+
+    private boolean isSpotifyBridgeAuthorized() {
+        try {
+            return spotifyAuthService.getValidAccessToken().isPresent();
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }

@@ -7,6 +7,8 @@ import com.quaver.common.model.music.RepeatMode;
 import com.quaver.common.model.music.TrackView;
 import com.quaver.common.support.MusicProfileSupport;
 import com.quaver.spotify.client.SpotifyPlaybackClient;
+import com.quaver.spotify.config.SpotifyProperties;
+import com.quaver.spotify.model.SpotifyDevice;
 import com.quaver.spotify.model.SpotifyPlaybackState;
 import com.quaver.spotify.model.SpotifyQueueState;
 import com.quaver.spotify.model.SpotifyTrackItem;
@@ -24,15 +26,18 @@ public class DefaultSpotifyPlaybackBridgeService implements SpotifyPlaybackBridg
     private final SpotifyAuthService spotifyAuthService;
     private final SpotifyPlaybackClient spotifyPlaybackClient;
     private final SpotifyCatalogService spotifyCatalogService;
+    private final SpotifyProperties spotifyProperties;
 
     public DefaultSpotifyPlaybackBridgeService(
             SpotifyAuthService spotifyAuthService,
             SpotifyPlaybackClient spotifyPlaybackClient,
-            SpotifyCatalogService spotifyCatalogService
+            SpotifyCatalogService spotifyCatalogService,
+            SpotifyProperties spotifyProperties
     ) {
         this.spotifyAuthService = spotifyAuthService;
         this.spotifyPlaybackClient = spotifyPlaybackClient;
         this.spotifyCatalogService = spotifyCatalogService;
+        this.spotifyProperties = spotifyProperties;
     }
 
     @Override
@@ -54,6 +59,7 @@ public class DefaultSpotifyPlaybackBridgeService implements SpotifyPlaybackBridg
             Integer positionMs
     ) {
         String token = requireAccessToken();
+        String resolvedDeviceId = resolveDeviceId(token, deviceId);
         List<String> nextUris = uris == null ? List.of() : uris;
         if ((nextUris.isEmpty() && (contextUri == null || contextUri.isBlank())) && trackId != null && !trackId.isBlank()) {
             TrackView track = spotifyCatalogService.getTrack(trackId)
@@ -63,50 +69,69 @@ public class DefaultSpotifyPlaybackBridgeService implements SpotifyPlaybackBridg
         if ((nextUris.isEmpty() && (contextUri == null || contextUri.isBlank())) && spotifyUri != null && !spotifyUri.isBlank()) {
             nextUris = List.of(spotifyUri);
         }
-        spotifyPlaybackClient.startPlayback(token, deviceId, nextUris, contextUri, offsetPosition, positionMs);
-        return getPlaybackState();
+        spotifyPlaybackClient.startPlayback(token, resolvedDeviceId, nextUris, contextUri, offsetPosition, positionMs);
+        return getPlaybackStateAfterCommand();
     }
 
     @Override
     public PlaybackStateView pause(String deviceId) {
-        spotifyPlaybackClient.pause(requireAccessToken(), deviceId);
-        return getPlaybackState();
+        String token = requireAccessToken();
+        spotifyPlaybackClient.pause(token, resolveDeviceId(token, deviceId));
+        return getPlaybackStateAfterCommand();
     }
 
     @Override
     public PlaybackStateView next(String deviceId) {
-        spotifyPlaybackClient.next(requireAccessToken(), deviceId);
-        return getPlaybackState();
+        String token = requireAccessToken();
+        spotifyPlaybackClient.next(token, resolveDeviceId(token, deviceId));
+        return getPlaybackStateAfterCommand();
     }
 
     @Override
     public PlaybackStateView previous(String deviceId) {
-        spotifyPlaybackClient.previous(requireAccessToken(), deviceId);
-        return getPlaybackState();
+        String token = requireAccessToken();
+        spotifyPlaybackClient.previous(token, resolveDeviceId(token, deviceId));
+        return getPlaybackStateAfterCommand();
     }
 
     @Override
     public PlaybackStateView seek(int positionMs, String deviceId) {
-        spotifyPlaybackClient.seek(requireAccessToken(), positionMs, deviceId);
+        String token = requireAccessToken();
+        spotifyPlaybackClient.seek(token, positionMs, resolveDeviceId(token, deviceId));
         return getPlaybackState();
     }
 
     @Override
     public PlaybackStateView setShuffle(boolean enabled, String deviceId) {
-        spotifyPlaybackClient.setShuffle(requireAccessToken(), enabled, deviceId);
+        String token = requireAccessToken();
+        spotifyPlaybackClient.setShuffle(token, enabled, resolveDeviceId(token, deviceId));
         return getPlaybackState();
     }
 
     @Override
     public PlaybackStateView setRepeatMode(RepeatMode repeatMode, String deviceId) {
-        spotifyPlaybackClient.setRepeatMode(requireAccessToken(), repeatMode, deviceId);
+        String token = requireAccessToken();
+        spotifyPlaybackClient.setRepeatMode(token, repeatMode, resolveDeviceId(token, deviceId));
+        return getPlaybackState();
+    }
+
+    @Override
+    public PlaybackStateView setVolume(int volume, String deviceId) {
+        String token = requireAccessToken();
+        spotifyPlaybackClient.setVolume(token, volume, resolveDeviceId(token, deviceId));
         return getPlaybackState();
     }
 
     @Override
     public PlaybackStateView addToQueue(String spotifyUri, String deviceId) {
-        spotifyPlaybackClient.addToQueue(requireAccessToken(), spotifyUri, deviceId);
+        String token = requireAccessToken();
+        spotifyPlaybackClient.addToQueue(token, spotifyUri, resolveDeviceId(token, deviceId));
         return getPlaybackState();
+    }
+
+    @Override
+    public List<SpotifyDevice> listDevices() {
+        return spotifyPlaybackClient.fetchDevices(requireAccessToken());
     }
 
     @Override
@@ -166,5 +191,54 @@ public class DefaultSpotifyPlaybackBridgeService implements SpotifyPlaybackBridg
         return spotifyAuthService.getValidAccessToken()
                 .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
                         "Spotify bridge account has not completed authorization yet."));
+    }
+
+    private String resolveDeviceId(String accessToken, String requestedDeviceId) {
+        List<SpotifyDevice> devices = spotifyPlaybackClient.fetchDevices(accessToken);
+
+        return findAvailableDeviceId(devices, requestedDeviceId)
+                .or(() -> findAvailableDeviceId(devices, spotifyProperties.getDefaultDeviceId()))
+                .or(() -> findActiveDeviceId(devices))
+                .or(() -> findFirstAvailableDeviceId(devices))
+                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
+                        "No Spotify playback device is available for this authorized account. Open Spotify on desktop, mobile, or web player once, then retry."));
+    }
+
+    private java.util.Optional<String> findAvailableDeviceId(List<SpotifyDevice> devices, String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        return devices.stream()
+                .filter(device -> deviceId.equals(device.id()))
+                .filter(device -> !Boolean.TRUE.equals(device.restricted()))
+                .map(SpotifyDevice::id)
+                .filter(id -> id != null && !id.isBlank())
+                .findFirst();
+    }
+
+    private java.util.Optional<String> findActiveDeviceId(List<SpotifyDevice> devices) {
+        return devices.stream()
+                .filter(device -> Boolean.TRUE.equals(device.active()))
+                .filter(device -> !Boolean.TRUE.equals(device.restricted()))
+                .map(SpotifyDevice::id)
+                .filter(id -> id != null && !id.isBlank())
+                .findFirst();
+    }
+
+    private java.util.Optional<String> findFirstAvailableDeviceId(List<SpotifyDevice> devices) {
+        return devices.stream()
+                .filter(device -> !Boolean.TRUE.equals(device.restricted()))
+                .map(SpotifyDevice::id)
+                .filter(id -> id != null && !id.isBlank())
+                .findFirst();
+    }
+
+    private PlaybackStateView getPlaybackStateAfterCommand() {
+        try {
+            Thread.sleep(350);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
+        return getPlaybackState();
     }
 }
