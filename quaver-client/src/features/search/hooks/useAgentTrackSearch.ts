@@ -56,7 +56,7 @@ export function useAgentTrackSearch() {
       const response = await searchTracksWithAgent(
         {
           query: trimmedQuery,
-          model: appConfig.agent.model,
+          model: appConfig.agent.searchModel,
           limit: 8,
           selectedPlaylistId,
           playlistIds: playlists.map((playlist) => playlist.id),
@@ -75,8 +75,12 @@ export function useAgentTrackSearch() {
 
       setResults(response.tracks);
       setRequestId(response.requestId ?? null);
-      setStatus(response.tracks.length ? "ready" : "empty");
-      setMessage(response.tracks.length ? null : "No matching tracks were returned.");
+      setStatus(response.status === "error" ? "error" : response.tracks.length ? "ready" : "empty");
+      setMessage(
+        response.tracks.length
+          ? null
+          : response.message ?? "No matching tracks were returned.",
+      );
     } catch (error) {
       if (controller.signal.aborted) {
         return;

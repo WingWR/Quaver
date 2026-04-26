@@ -130,7 +130,7 @@ export function useAgentConversationRuntime(isActive: boolean) {
       const optimisticUserMessage = createOptimisticMessage(
         activeConversationPayload.conversation.id,
         content,
-        appConfig.agent.model,
+        appConfig.agent.chatModel,
       );
 
       setMessages((currentMessages) => [...currentMessages, optimisticUserMessage]);
@@ -174,6 +174,6 @@ export function useAgentConversationRuntime(isActive: boolean) {
     canSend,
     reloadConversation,
     submitDraft,
-    model: conversation?.model ?? appConfig.agent.model,
+    model: conversation?.model ?? appConfig.agent.chatModel,
   };
 }

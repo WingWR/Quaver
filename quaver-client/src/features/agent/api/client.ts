@@ -34,7 +34,7 @@ export function createAgentConversation(
     headers: buildAgentHeaders(),
     body: JSON.stringify({
       title: input.title ?? appConfig.agent.defaultConversationTitle,
-      model: input.model ?? appConfig.agent.model,
+      model: input.model ?? appConfig.agent.chatModel,
       spotifyDeveloperAccount: input.spotifyDeveloperAccount ?? appConfig.spotify.developerAccount,
       metadata: input.metadata,
     }),
@@ -66,7 +66,7 @@ export function sendAgentMessage(
       headers: buildAgentHeaders(),
       body: JSON.stringify({
         content: input.content,
-        model: input.model ?? appConfig.agent.model,
+        model: input.model ?? appConfig.agent.chatModel,
         spotifyDeveloperAccount:
           input.spotifyDeveloperAccount ?? appConfig.spotify.developerAccount,
         metadata: input.metadata,
