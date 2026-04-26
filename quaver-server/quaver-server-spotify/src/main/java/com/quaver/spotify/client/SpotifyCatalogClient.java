@@ -1,6 +1,8 @@
 package com.quaver.spotify.client;
 
 import com.quaver.spotify.model.SpotifyArtistItem;
+import com.quaver.spotify.model.SpotifyPlaylistItem;
+import com.quaver.spotify.model.SpotifyProfile;
 import com.quaver.spotify.model.SpotifyTrackItem;
 import java.util.List;
 import java.util.Optional;
@@ -15,16 +17,17 @@ public class SpotifyCatalogClient {
     private final RestClient restClient;
 
     public SpotifyCatalogClient(RestClient.Builder restClientBuilder) {
-        this.restClient = restClientBuilder.baseUrl("https://api.spotify.com/v1").build();
+        this.restClient = restClientBuilder.baseUrl("https://api.spotify.com").build();
     }
 
     public List<SpotifyTrackItem> searchTracks(String accessToken, String query, int limit) {
         SearchResponse response = restClient.get()
-                .uri(UriComponentsBuilder.fromPath("/search")
+                .uri(UriComponentsBuilder.fromPath("/v1/search")
                         .queryParam("q", query)
                         .queryParam("type", "track")
                         .queryParam("limit", limit)
-                        .build(true)
+                        .build()
+                        .encode()
                         .toUri())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
@@ -38,11 +41,79 @@ public class SpotifyCatalogClient {
 
     public Optional<SpotifyTrackItem> getTrack(String accessToken, String spotifyTrackId) {
         TrackResponse response = restClient.get()
-                .uri("/tracks/{id}", spotifyTrackId)
+                .uri("/v1/tracks/{id}", spotifyTrackId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .body(TrackResponse.class);
         return Optional.ofNullable(response).map(this::mapTrack);
+    }
+
+    public SpotifyProfile fetchProfile(String accessToken) {
+        ProfileResponse response = restClient.get()
+                .uri("/v1/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .body(ProfileResponse.class);
+
+        if (response == null) {
+            return new SpotifyProfile(null, null, null);
+        }
+
+        return new SpotifyProfile(
+                response.displayName(),
+                response.email(),
+                firstImageUrl(response.images())
+        );
+    }
+
+    public List<SpotifyPlaylistItem> fetchPlaylists(String accessToken, int limit) {
+        PlaylistPageResponse response = restClient.get()
+                .uri(UriComponentsBuilder.fromPath("/v1/me/playlists")
+                        .queryParam("limit", limit)
+                        .build()
+                        .encode()
+                        .toUri())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .body(PlaylistPageResponse.class);
+
+        if (response == null || response.items() == null) {
+            return List.of();
+        }
+
+        return response.items().stream()
+                .map(playlist -> new SpotifyPlaylistItem(
+                        playlist.id(),
+                        playlist.name(),
+                        playlist.description(),
+                        firstImageUrl(playlist.images()),
+                        playlist.uri(),
+                        playlist.owner() == null ? null : playlist.owner().displayName()
+                ))
+                .toList();
+    }
+
+    public List<SpotifyTrackItem> fetchPlaylistTracks(String accessToken, String playlistId, int limit) {
+        PlaylistTrackPageResponse response = restClient.get()
+                .uri(UriComponentsBuilder.fromPath("/v1/playlists/{playlistId}/tracks")
+                        .queryParam("market", "from_token")
+                        .queryParam("limit", limit)
+                        .buildAndExpand(playlistId)
+                        .encode()
+                        .toUri())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .body(PlaylistTrackPageResponse.class);
+
+        if (response == null || response.items() == null) {
+            return List.of();
+        }
+
+        return response.items().stream()
+                .map(PlaylistTrackItemResponse::track)
+                .filter(track -> track != null && track.id() != null)
+                .map(this::mapTrack)
+                .toList();
     }
 
     private SpotifyTrackItem mapTrack(TrackResponse response) {
@@ -62,10 +133,46 @@ public class SpotifyCatalogClient {
         );
     }
 
+    private String firstImageUrl(List<ImageResponse> images) {
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+        return images.getFirst().url();
+    }
+
     private record SearchResponse(TracksPage tracks) {
     }
 
     private record TracksPage(List<TrackResponse> items) {
+    }
+
+    private record ProfileResponse(
+            @com.fasterxml.jackson.annotation.JsonProperty("display_name") String displayName,
+            String email,
+            List<ImageResponse> images
+    ) {
+    }
+
+    private record PlaylistPageResponse(List<PlaylistResponse> items) {
+    }
+
+    private record PlaylistTrackPageResponse(List<PlaylistTrackItemResponse> items) {
+    }
+
+    private record PlaylistTrackItemResponse(TrackResponse track) {
+    }
+
+    private record PlaylistResponse(
+            String id,
+            String name,
+            String description,
+            List<ImageResponse> images,
+            String uri,
+            OwnerResponse owner
+    ) {
+    }
+
+    private record OwnerResponse(@com.fasterxml.jackson.annotation.JsonProperty("display_name") String displayName) {
     }
 
     private record TrackResponse(

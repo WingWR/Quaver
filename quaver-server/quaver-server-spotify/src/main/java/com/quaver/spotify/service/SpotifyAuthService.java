@@ -13,4 +13,6 @@ public interface SpotifyAuthService {
     SpotifyAuthStatusDto getCurrentStatus();
 
     Optional<String> getValidAccessToken();
+
+    Optional<String> getCatalogAccessToken();
 }

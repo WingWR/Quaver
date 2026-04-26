@@ -15,6 +15,12 @@ public class AgentRuntimeStatusDto {
 
     private String aiModel;
 
+    private String aiSearchModel;
+
+    private String aiAgentModel;
+
+    private String aiBaseUrl;
+
     private boolean spotifyBridgeEnabled;
 
     private boolean spotifyBridgeAuthorized;

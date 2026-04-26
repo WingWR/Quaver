@@ -10,9 +10,10 @@ public class SpotifyProperties {
     private boolean enabled;
     private String clientId = "";
     private String clientSecret = "";
-    private String redirectUri = "http://localhost:8080/api/spotify/auth/callback";
+    private String redirectUri = "http://127.0.0.1:8080/api/spotify/auth/callback";
     private String developerAccount = "";
     private String defaultDeviceId = "";
+    private String bridgeRefreshToken = "";
     private List<String> scopes = new ArrayList<>(List.of(
             "user-read-private",
             "user-read-email",
@@ -70,6 +71,14 @@ public class SpotifyProperties {
 
     public void setDefaultDeviceId(String defaultDeviceId) {
         this.defaultDeviceId = defaultDeviceId;
+    }
+
+    public String getBridgeRefreshToken() {
+        return bridgeRefreshToken;
+    }
+
+    public void setBridgeRefreshToken(String bridgeRefreshToken) {
+        this.bridgeRefreshToken = bridgeRefreshToken;
     }
 
     public List<String> getScopes() {

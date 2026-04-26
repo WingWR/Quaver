@@ -2,6 +2,7 @@ package com.quaver.spotify.client;
 
 import com.quaver.common.model.music.RepeatMode;
 import com.quaver.spotify.model.SpotifyArtistItem;
+import com.quaver.spotify.model.SpotifyDevice;
 import com.quaver.spotify.model.SpotifyPlaybackState;
 import com.quaver.spotify.model.SpotifyQueueState;
 import com.quaver.spotify.model.SpotifyTrackItem;
@@ -19,12 +20,12 @@ public class SpotifyPlaybackClient {
     private final RestClient restClient;
 
     public SpotifyPlaybackClient(RestClient.Builder restClientBuilder) {
-        this.restClient = restClientBuilder.baseUrl("https://api.spotify.com/v1").build();
+        this.restClient = restClientBuilder.baseUrl("https://api.spotify.com").build();
     }
 
     public Optional<SpotifyPlaybackState> fetchPlaybackState(String accessToken) {
         PlaybackResponse response = restClient.get()
-                .uri("/me/player")
+                .uri("/v1/me/player")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .body(PlaybackResponse.class);
@@ -45,7 +46,7 @@ public class SpotifyPlaybackClient {
 
     public SpotifyQueueState fetchQueue(String accessToken) {
         QueueResponse response = restClient.get()
-                .uri("/me/player/queue")
+                .uri("/v1/me/player/queue")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .body(QueueResponse.class);
@@ -59,6 +60,28 @@ public class SpotifyPlaybackClient {
         );
     }
 
+    public List<SpotifyDevice> fetchDevices(String accessToken) {
+        DevicesResponse response = restClient.get()
+                .uri("/v1/me/player/devices")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .body(DevicesResponse.class);
+
+        if (response == null || response.devices() == null) {
+            return List.of();
+        }
+        return response.devices().stream()
+                .map(device -> new SpotifyDevice(
+                        device.id(),
+                        device.name(),
+                        device.type(),
+                        device.isActive(),
+                        device.isRestricted(),
+                        device.volumePercent()
+                ))
+                .toList();
+    }
+
     public void startPlayback(
             String accessToken,
             String deviceId,
@@ -69,7 +92,7 @@ public class SpotifyPlaybackClient {
     ) {
         PlayBody body = new PlayBody(contextUri, uris, offsetPosition == null ? null : new OffsetBody(offsetPosition), positionMs);
         restClient.put()
-                .uri(withOptionalDevice("/me/player/play", deviceId))
+                .uri(withOptionalDevice("/v1/me/player/play", deviceId))
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
@@ -79,7 +102,7 @@ public class SpotifyPlaybackClient {
 
     public void pause(String accessToken, String deviceId) {
         restClient.put()
-                .uri(withOptionalDevice("/me/player/pause", deviceId))
+                .uri(withOptionalDevice("/v1/me/player/pause", deviceId))
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .toBodilessEntity();
@@ -87,7 +110,7 @@ public class SpotifyPlaybackClient {
 
     public void next(String accessToken, String deviceId) {
         restClient.post()
-                .uri(withOptionalDevice("/me/player/next", deviceId))
+                .uri(withOptionalDevice("/v1/me/player/next", deviceId))
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .toBodilessEntity();
@@ -95,7 +118,7 @@ public class SpotifyPlaybackClient {
 
     public void previous(String accessToken, String deviceId) {
         restClient.post()
-                .uri(withOptionalDevice("/me/player/previous", deviceId))
+                .uri(withOptionalDevice("/v1/me/player/previous", deviceId))
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .toBodilessEntity();
@@ -103,10 +126,11 @@ public class SpotifyPlaybackClient {
 
     public void seek(String accessToken, int positionMs, String deviceId) {
         restClient.put()
-                .uri(UriComponentsBuilder.fromPath("/me/player/seek")
+                .uri(UriComponentsBuilder.fromPath("/v1/me/player/seek")
                         .queryParam("position_ms", positionMs)
                         .queryParamIfPresent("device_id", Optional.ofNullable(blankToNull(deviceId)))
-                        .build(true)
+                        .build()
+                        .encode()
                         .toUri())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
@@ -115,10 +139,11 @@ public class SpotifyPlaybackClient {
 
     public void setShuffle(String accessToken, boolean enabled, String deviceId) {
         restClient.put()
-                .uri(UriComponentsBuilder.fromPath("/me/player/shuffle")
+                .uri(UriComponentsBuilder.fromPath("/v1/me/player/shuffle")
                         .queryParam("state", enabled)
                         .queryParamIfPresent("device_id", Optional.ofNullable(blankToNull(deviceId)))
-                        .build(true)
+                        .build()
+                        .encode()
                         .toUri())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
@@ -127,10 +152,24 @@ public class SpotifyPlaybackClient {
 
     public void setRepeatMode(String accessToken, RepeatMode repeatMode, String deviceId) {
         restClient.put()
-                .uri(UriComponentsBuilder.fromPath("/me/player/repeat")
+                .uri(UriComponentsBuilder.fromPath("/v1/me/player/repeat")
                         .queryParam("state", repeatMode.getValue())
                         .queryParamIfPresent("device_id", Optional.ofNullable(blankToNull(deviceId)))
-                        .build(true)
+                        .build()
+                        .encode()
+                        .toUri())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    public void setVolume(String accessToken, int volumePercent, String deviceId) {
+        restClient.put()
+                .uri(UriComponentsBuilder.fromPath("/v1/me/player/volume")
+                        .queryParam("volume_percent", Math.max(0, Math.min(100, volumePercent)))
+                        .queryParamIfPresent("device_id", Optional.ofNullable(blankToNull(deviceId)))
+                        .build()
+                        .encode()
                         .toUri())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
@@ -139,10 +178,11 @@ public class SpotifyPlaybackClient {
 
     public void addToQueue(String accessToken, String spotifyUri, String deviceId) {
         restClient.post()
-                .uri(UriComponentsBuilder.fromPath("/me/player/queue")
+                .uri(UriComponentsBuilder.fromPath("/v1/me/player/queue")
                         .queryParam("uri", spotifyUri)
                         .queryParamIfPresent("device_id", Optional.ofNullable(blankToNull(deviceId)))
-                        .build(true)
+                        .build()
+                        .encode()
                         .toUri())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
@@ -151,7 +191,7 @@ public class SpotifyPlaybackClient {
 
     public void addTracksToPlaylist(String accessToken, String playlistId, List<String> uris) {
         restClient.post()
-                .uri("/playlists/{playlistId}/tracks", playlistId)
+                .uri("/v1/playlists/{playlistId}/tracks", playlistId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new PlaylistTrackBody(uris))
@@ -162,7 +202,8 @@ public class SpotifyPlaybackClient {
     private java.net.URI withOptionalDevice(String path, String deviceId) {
         return UriComponentsBuilder.fromPath(path)
                 .queryParamIfPresent("device_id", Optional.ofNullable(blankToNull(deviceId)))
-                .build(true)
+                .build()
+                .encode()
                 .toUri();
     }
 
@@ -205,8 +246,15 @@ public class SpotifyPlaybackClient {
 
     private record DeviceResponse(
             String id,
+            String name,
+            String type,
+            @com.fasterxml.jackson.annotation.JsonProperty("is_active") Boolean isActive,
+            @com.fasterxml.jackson.annotation.JsonProperty("is_restricted") Boolean isRestricted,
             @com.fasterxml.jackson.annotation.JsonProperty("volume_percent") Integer volumePercent
     ) {
+    }
+
+    private record DevicesResponse(List<DeviceResponse> devices) {
     }
 
     private record TrackResponse(
