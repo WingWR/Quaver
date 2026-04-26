@@ -12,7 +12,7 @@ export default function LibraryPlaylistSection() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-brand-grey">Library</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">歌单</h2>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">Playlists</h2>
         </div>
         <div className="rounded-full bg-white/[0.04] px-3 py-1 text-[11px] text-brand-grey">
           {playlists.length} Lists
@@ -67,9 +67,10 @@ export default function LibraryPlaylistSection() {
         </div>
       ) : (
         <div className="rounded-[28px] border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-5">
-          <p className="text-sm font-medium text-white">当前没有可展示的歌单</p>
+          <p className="text-sm font-medium text-white">No playlists yet</p>
           <p className="mt-2 text-sm leading-6 text-brand-grey">
-            {library.message ?? "后端接入后，这里会直接显示真实歌单数据。"}
+            {library.message ??
+              "This user has not created or connected any playlists. New playlists will appear here when the backend returns them."}
           </p>
         </div>
       )}

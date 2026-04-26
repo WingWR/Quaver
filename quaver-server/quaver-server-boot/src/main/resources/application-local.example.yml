@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
     username: root
-    password: WANGRUI37211WING
+    password: your-mysql-password
   data:
     redis:
       host: 127.0.0.1
@@ -25,7 +25,7 @@ quaver:
     model: gpt-4.1-mini
     base-url: https://api.openai.com/v1
   spotify:
-    enabled: true
+    enabled: false
     client-id: your-spotify-client-id
     client-secret: your-spotify-client-secret
     redirect-uri: http://localhost:8080/api/spotify/auth/callback
