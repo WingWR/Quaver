@@ -15,9 +15,9 @@ export default function MainCanvasWorkspace() {
         <motion.div
           key={currentTrack.id}
           layoutId="main-canvas-glow"
-          className="pointer-events-none absolute right-[-8%] top-[-12%] h-80 w-80 rounded-full blur-3xl"
+          className="pointer-events-none absolute inset-x-0 top-0 h-56 blur-3xl"
           style={{
-            background: `radial-gradient(circle, ${currentTrack.accent}50 0%, transparent 70%)`,
+            background: `linear-gradient(115deg, ${currentTrack.accent}45 0%, rgba(56,189,248,0.18) 42%, transparent 76%)`,
           }}
         />
       ) : null}

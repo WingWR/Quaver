@@ -28,6 +28,7 @@ export default function PlayerBar() {
     toggleShuffleMode,
     cycleRepeatMode,
   } = usePlaybackControllerRuntime();
+  const accentColor = currentTrack?.accent ?? "#34d399";
 
   useEffect(() => {
     if (!isPlaying || !currentTrack || playbackSource !== "backend") {
@@ -51,12 +52,25 @@ export default function PlayerBar() {
   return (
     <motion.footer
       layout
-      className="relative z-40 bg-[#111111]/88 px-4 py-4 backdrop-blur-2xl md:px-6 lg:h-[90px] lg:py-0"
+      className="relative z-40 overflow-visible border-t border-white/10 bg-black/[0.58] px-3 py-3 shadow-[0_-28px_90px_rgba(0,0,0,0.48)] backdrop-blur-2xl md:px-6 lg:h-[112px] lg:py-0"
     >
-      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <motion.div
+          key={accentColor}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.74 }}
+          transition={{ duration: 0.45 }}
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(115deg, ${accentColor}38 0%, rgba(56,189,248,0.18) 34%, rgba(244,114,182,0.14) 68%, rgba(251,191,36,0.12) 100%)`,
+          }}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06),rgba(0,0,0,0.72))]" />
+        <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+      </div>
       <motion.div
         layout
-        className="flex h-full flex-col gap-4 lg:flex-row lg:items-center lg:gap-5"
+        className="relative mx-auto flex h-full max-w-[102rem] flex-col gap-4 lg:flex-row lg:items-center lg:gap-5"
       >
         <div className="min-w-0 lg:flex-[0.95]">
           <TrackInfo track={currentTrack} onOpenLyrics={() => setCanvasView("lyrics")} />
