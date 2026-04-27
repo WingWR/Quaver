@@ -10,8 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 @MapperScan(basePackages = {
         "com.quaver.common.identity.mapper",
         "com.quaver.spotify.mapper",
-        "com.quaver.library.mapper",
-        "com.quaver.agent.mapper"
+        "com.quaver.library.mapper"
 })
 public class QuaverServerApplication {
 

@@ -4,6 +4,7 @@ import com.quaver.common.exception.BusinessException;
 import com.quaver.spotify.client.SpotifyAuthClient;
 import com.quaver.spotify.config.SpotifyProperties;
 import com.quaver.spotify.dto.SpotifyAuthStatusDto;
+import com.quaver.spotify.dto.SpotifyPlayerTokenDto;
 import com.quaver.spotify.entity.SpotifyAuthorizationEntity;
 import com.quaver.spotify.mapper.SpotifyAuthorizationMapper;
 import com.quaver.spotify.model.SpotifyTokenSnapshot;
@@ -11,6 +12,7 @@ import com.quaver.spotify.service.SpotifyAuthService;
 import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,6 +25,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class DefaultSpotifyAuthService implements SpotifyAuthService {
 
     private static final String BRIDGE_ID = "bridge-default";
+    private static final String STREAMING_SCOPE = "streaming";
+    private static final List<String> FRONTEND_REQUIRED_SCOPES = List.of(
+            STREAMING_SCOPE,
+            "playlist-read-collaborative"
+    );
 
     private final SpotifyAuthClient spotifyAuthClient;
     private final SpotifyAuthorizationMapper authorizationMapper;
@@ -105,7 +112,9 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
                     entity.getExpiresAt(),
                     hasConfiguredRefreshToken(),
                     "authorized",
-                    "Spotify bridge account is connected."
+                    missingScopes(entity.getScopes()).isEmpty()
+                            ? "Spotify bridge account is connected."
+                            : "Spotify is connected, but it needs a fresh authorization with: " + String.join(", ", missingScopes(entity.getScopes())) + "."
             );
         }
 
@@ -123,6 +132,31 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
 
         return baseStatus(true, false, null, "needs-oauth",
                 "Spotify needs one browser authorization before backend playback and library sync can work.");
+    }
+
+    @Override
+    @Transactional
+    public SpotifyPlayerTokenDto getPlayerToken() {
+        String accessToken = getValidAccessToken()
+                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
+                        "Spotify bridge account has not completed authorization yet."));
+        SpotifyAuthorizationEntity entity = authorizationMapper.selectById(BRIDGE_ID);
+
+        if (entity == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST,
+                    "Spotify bridge account has not completed authorization yet.");
+        }
+
+        if (!hasScope(entity.getScopes(), STREAMING_SCOPE)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST,
+                    "Spotify authorization is missing the streaming scope. Connect Spotify again so the browser player can start.");
+        }
+
+        return new SpotifyPlayerTokenDto(
+                accessToken,
+                entity.getExpiresAt(),
+                entity.getScopes()
+        );
     }
 
     @Override
@@ -273,6 +307,16 @@ public class DefaultSpotifyAuthService implements SpotifyAuthService {
 
     private boolean hasConfiguredRefreshToken() {
         return !isBlank(spotifyProperties.getBridgeRefreshToken());
+    }
+
+    private boolean hasScope(List<String> scopes, String scope) {
+        return scopes != null && scopes.stream().anyMatch(scope::equals);
+    }
+
+    private List<String> missingScopes(List<String> scopes) {
+        return FRONTEND_REQUIRED_SCOPES.stream()
+                .filter(scope -> !hasScope(scopes, scope))
+                .toList();
     }
 
     private boolean isBlank(String value) {

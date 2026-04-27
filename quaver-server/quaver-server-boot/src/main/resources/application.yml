@@ -57,14 +57,17 @@ quaver:
     client-secret: 7fba92427514484d9d55af9e60a0111b
     redirect-uri: http://127.0.0.1:8080/api/spotify/auth/callback
     developer-account: drinkinhuang@gmail.com
-    default-device-id: 8e6157107c38d2ef657dd9175465dd963bb196ea
+    default-device-id: 59728a6b9cfca779196e5da6a58ae3eff021a6aa
     bridge-refresh-token:
+    search-market: US
     scopes:
       - user-read-private
       - user-read-email
       - user-read-playback-state
       - user-read-currently-playing
       - user-modify-playback-state
+      - streaming
       - playlist-read-private
+      - playlist-read-collaborative
       - playlist-modify-private
       - playlist-modify-public

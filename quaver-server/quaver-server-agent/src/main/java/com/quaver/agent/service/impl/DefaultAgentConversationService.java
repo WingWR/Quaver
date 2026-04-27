@@ -1,29 +1,21 @@
 package com.quaver.agent.service.impl;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.quaver.agent.ai.AgentAiService;
 import com.quaver.agent.dto.AgentConversationDto;
 import com.quaver.agent.dto.AgentConversationPayload;
 import com.quaver.agent.dto.AgentMessageDto;
 import com.quaver.agent.dto.AgentOperationDto;
 import com.quaver.agent.dto.AgentRuntimeStatusDto;
+import com.quaver.agent.dto.AgentTrackSearchRequest;
+import com.quaver.agent.dto.AgentTrackSearchResponse;
 import com.quaver.agent.dto.CreateAgentConversationRequest;
 import com.quaver.agent.dto.SendAgentMessageRequest;
 import com.quaver.agent.dto.SendAgentMessageResponse;
-import com.quaver.agent.dto.AgentTrackSearchRequest;
-import com.quaver.agent.dto.AgentTrackSearchResponse;
-import com.quaver.agent.ai.AgentAiService;
-import com.quaver.agent.entity.AgentConversationEntity;
-import com.quaver.agent.entity.AgentMessageEntity;
-import com.quaver.agent.mapper.AgentConversationMapper;
-import com.quaver.agent.mapper.AgentMessageMapper;
-import com.quaver.agent.model.AgentIntent;
 import com.quaver.agent.model.ParsedAgentCommand;
 import com.quaver.agent.service.AgentCommandParser;
 import com.quaver.agent.service.AgentConversationService;
 import com.quaver.agent.service.AgentTrackSearchService;
 import com.quaver.common.config.QuaverAiProperties;
-import com.quaver.common.exception.NotFoundException;
-import com.quaver.common.identity.UserContextService;
 import com.quaver.common.model.music.PlaybackSource;
 import com.quaver.common.model.music.TrackView;
 import com.quaver.library.service.LibraryService;
@@ -35,14 +27,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DefaultAgentConversationService implements AgentConversationService {
 
-    private final UserContextService userContextService;
-    private final AgentConversationMapper conversationMapper;
-    private final AgentMessageMapper messageMapper;
+    private static final String TRANSIENT_CONVERSATION_ID = "transient-agent-session";
+
     private final AgentCommandParser agentCommandParser;
     private final AgentTrackSearchService agentTrackSearchService;
     private final AgentAiService agentAiService;
@@ -53,9 +43,6 @@ public class DefaultAgentConversationService implements AgentConversationService
     private final Clock clock;
 
     public DefaultAgentConversationService(
-            UserContextService userContextService,
-            AgentConversationMapper conversationMapper,
-            AgentMessageMapper messageMapper,
             AgentCommandParser agentCommandParser,
             AgentTrackSearchService agentTrackSearchService,
             AgentAiService agentAiService,
@@ -65,9 +52,6 @@ public class DefaultAgentConversationService implements AgentConversationService
             SpotifyAuthService spotifyAuthService,
             Clock clock
     ) {
-        this.userContextService = userContextService;
-        this.conversationMapper = conversationMapper;
-        this.messageMapper = messageMapper;
         this.agentCommandParser = agentCommandParser;
         this.agentTrackSearchService = agentTrackSearchService;
         this.agentAiService = agentAiService;
@@ -80,50 +64,24 @@ public class DefaultAgentConversationService implements AgentConversationService
 
     @Override
     public AgentConversationPayload getDefaultConversation() {
-        String userId = userContextService.getCurrentUserId();
-        AgentConversationEntity entity = conversationMapper.selectOne(Wrappers.lambdaQuery(AgentConversationEntity.class)
-                .eq(AgentConversationEntity::getUserId, userId)
-                .eq(AgentConversationEntity::getIsDefaultConversation, true)
-                .last("limit 1"));
-        if (entity == null) {
-            throw new NotFoundException("Default conversation does not exist yet.");
-        }
-        return new AgentConversationPayload(toConversationDto(entity), listMessages(entity.getId()));
+        return new AgentConversationPayload(createConversationDto(null, null), List.of());
     }
 
     @Override
-    @Transactional
     public AgentConversationPayload createConversation(CreateAgentConversationRequest request) {
-        String userId = userContextService.getCurrentUserId();
-        boolean hasConversation = conversationMapper.selectCount(Wrappers.lambdaQuery(AgentConversationEntity.class)
-                .eq(AgentConversationEntity::getUserId, userId)) > 0;
-
-        AgentConversationEntity entity = new AgentConversationEntity();
-        entity.setId(UUID.randomUUID().toString());
-        entity.setUserId(userId);
-        entity.setTitle(request.getTitle() == null || request.getTitle().isBlank() ? "Quaver Agent Session" : request.getTitle());
-        entity.setModel(request.getModel() == null || request.getModel().isBlank() ? aiProperties.getAgentModel() : request.getModel());
-        entity.setStatus("idle");
-        entity.setIsDefaultConversation(!hasConversation);
-        entity.setMetadata(request.getMetadata());
-        entity.setCreatedAt(LocalDateTime.now(clock));
-        entity.setUpdatedAt(LocalDateTime.now(clock));
-        conversationMapper.insert(entity);
-        return new AgentConversationPayload(toConversationDto(entity), List.of());
+        return new AgentConversationPayload(
+                createConversationDto(
+                        request == null ? null : request.getTitle(),
+                        request == null ? null : request.getModel()
+                ),
+                List.of()
+        );
     }
 
     @Override
-    @Transactional
     public SendAgentMessageResponse sendMessage(String conversationId, SendAgentMessageRequest request) {
-        AgentConversationEntity conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null) {
-            throw new NotFoundException("Conversation does not exist.");
-        }
-
-        String assistantModel = resolveAgentModel(request.getModel(), conversation.getModel());
-        AgentMessageEntity userMessage = saveMessage(conversation, "user", request.getContent(), assistantModel,
-                List.of(operation("status", "Message received", "User message stored for parsing.", "completed")), request.getMetadata());
-
+        String assistantModel = resolveAgentModel(request.getModel(), null);
+        AgentConversationDto conversation = createConversationDto(null, assistantModel);
         ParsedAgentCommand command = agentCommandParser.parse(request.getContent());
         String deterministicReply = buildAssistantReply(command, request);
         String assistantReply = agentAiService.composeAgentReply(
@@ -132,24 +90,32 @@ public class DefaultAgentConversationService implements AgentConversationService
                 deterministicReply,
                 assistantModel
         );
-        AgentMessageEntity assistantMessage = saveMessage(
-                conversation,
+
+        String now = LocalDateTime.now(clock).toString();
+        AgentMessageDto userMessage = new AgentMessageDto(
+                "local-user-" + UUID.randomUUID(),
+                resolveConversationId(conversationId),
+                "user",
+                request.getContent(),
+                now,
+                "completed",
+                assistantModel,
+                List.of(operation("status", "Message received", "Handled in transient mode; not saved to MySQL.", "completed")),
+                request.getMetadata()
+        );
+        AgentMessageDto assistantMessage = new AgentMessageDto(
+                "local-assistant-" + UUID.randomUUID(),
+                resolveConversationId(conversationId),
                 "assistant",
                 assistantReply,
+                LocalDateTime.now(clock).toString(),
+                "completed",
                 assistantModel,
-                buildOperations(command, request),
-                Map.of("intent", command.intent().name())
+                buildOperations(command),
+                Map.of("intent", command.intent().name(), "persistence", "transient")
         );
 
-        conversation.setStatus("idle");
-        conversation.setUpdatedAt(LocalDateTime.now(clock));
-        conversationMapper.updateById(conversation);
-        return new SendAgentMessageResponse(
-                toConversationDto(conversation),
-                toMessageDto(userMessage),
-                toMessageDto(assistantMessage),
-                listMessages(conversationId)
-        );
+        return new SendAgentMessageResponse(conversation, userMessage, assistantMessage, null);
     }
 
     @Override
@@ -171,7 +137,8 @@ public class DefaultAgentConversationService implements AgentConversationService
                 AgentTrackSearchResponse response = agentTrackSearchService.search(new AgentTrackSearchRequest(
                         command.query(),
                         aiProperties.getSearchModel(),
-                        5,
+                        12,
+                        0,
                         null,
                         List.of(),
                         List.of(),
@@ -182,13 +149,14 @@ public class DefaultAgentConversationService implements AgentConversationService
                     yield "I parsed this as a search request, but there are no matching tracks in the current cache or Spotify bridge.";
                 }
                 String topTitles = response.getTracks().stream().limit(3).map(TrackView::title).reduce((left, right) -> left + ", " + right).orElse("");
-                yield "I parsed this as a search request and found " + response.getTotal() + " candidate tracks. Top results: " + topTitles + ".";
+                yield "I parsed this as a search request and found " + response.getTracks().size() + " visible candidate tracks. Top results: " + topTitles + ".";
             }
             case PLAY -> {
                 AgentTrackSearchResponse response = agentTrackSearchService.search(new AgentTrackSearchRequest(
                         command.query().isBlank() ? request.getContent() : command.query(),
                         aiProperties.getSearchModel(),
-                        8,
+                        12,
+                        0,
                         null,
                         List.of(),
                         List.of(),
@@ -203,83 +171,44 @@ public class DefaultAgentConversationService implements AgentConversationService
                 yield "I parsed this as a play command and loaded " + response.getTracks().size()
                         + " track(s) into the queue. Playback session state has been updated on the backend.";
             }
-            case PAUSE -> "Pause command received. The command parser and conversation pipeline are active; detailed playback orchestration can be expanded next.";
-            case NEXT -> "Next-track command received. The current implementation records the intent and keeps the command path ready for later playback orchestration.";
-            case PREVIOUS -> "Previous-track command received. The current implementation records the intent and keeps the command path ready for later playback orchestration.";
-            case CHAT -> "Conversation pipeline is available. This stage stores messages, parses music intents, and uses the configured AI model for assistant reply composition when the API key is present.";
+            case PAUSE -> "Pause command received. This transient agent mode does not save message history.";
+            case NEXT -> "Next-track command received. This transient agent mode does not save message history.";
+            case PREVIOUS -> "Previous-track command received. This transient agent mode does not save message history.";
+            case CHAT -> "Conversation pipeline is available in transient mode. Messages are not saved to MySQL.";
         };
     }
 
-    private List<AgentOperationDto> buildOperations(ParsedAgentCommand command, SendAgentMessageRequest request) {
+    private List<AgentOperationDto> buildOperations(ParsedAgentCommand command) {
         AgentOperationDto parsed = operation("decision", "Intent parsed", "Detected intent: " + command.intent().name(), "completed");
         return switch (command.intent()) {
             case SEARCH -> List.of(parsed, operation("tool_call", "Track search", "Search sent to cache and Spotify bridge.", "completed"));
             case PLAY -> List.of(parsed, operation("tool_call", "Track search", "Searching tracks for playback.", "completed"),
                     operation("tool_call", "Queue sync", "Playback queue has been updated on the backend.", "completed"));
-            case PAUSE, NEXT, PREVIOUS -> List.of(parsed, operation("status", "Command accepted", "Execution hook reserved for the next algorithm iteration.", "completed"));
-            case CHAT -> List.of(parsed, operation("status", "Conversation persisted", "Message history saved to MySQL.", "completed"));
+            case PAUSE, NEXT, PREVIOUS -> List.of(parsed, operation("status", "Command accepted", "No conversation history saved.", "completed"));
+            case CHAT -> List.of(parsed, operation("status", "Transient response", "No conversation history saved.", "completed"));
         };
     }
 
-    private AgentMessageEntity saveMessage(
-            AgentConversationEntity conversation,
-            String role,
-            String content,
-            String model,
-            List<AgentOperationDto> operations,
-            Map<String, Object> metadata
-    ) {
-        AgentMessageEntity message = new AgentMessageEntity();
-        message.setId(UUID.randomUUID().toString());
-        message.setConversationId(conversation.getId());
-        message.setUserId(conversation.getUserId());
-        message.setRole(role);
-        message.setContent(content);
-        message.setStatus("completed");
-        message.setModel(model == null || model.isBlank() ? conversation.getModel() : model);
-        message.setOperations(operations);
-        message.setMetadata(metadata);
-        message.setCreatedAt(LocalDateTime.now(clock));
-        messageMapper.insert(message);
-        return message;
-    }
-
-    private List<AgentMessageDto> listMessages(String conversationId) {
-        return messageMapper.selectList(Wrappers.lambdaQuery(AgentMessageEntity.class)
-                        .eq(AgentMessageEntity::getConversationId, conversationId)
-                        .orderByAsc(AgentMessageEntity::getCreatedAt))
-                .stream()
-                .map(this::toMessageDto)
-                .toList();
-    }
-
-    private AgentConversationDto toConversationDto(AgentConversationEntity entity) {
+    private AgentConversationDto createConversationDto(String title, String model) {
+        String now = LocalDateTime.now(clock).toString();
         return new AgentConversationDto(
-                entity.getId(),
-                entity.getTitle(),
-                entity.getModel(),
-                entity.getStatus(),
-                entity.getCreatedAt() == null ? null : entity.getCreatedAt().toString(),
-                entity.getUpdatedAt() == null ? null : entity.getUpdatedAt().toString()
-        );
-    }
-
-    private AgentMessageDto toMessageDto(AgentMessageEntity entity) {
-        return new AgentMessageDto(
-                entity.getId(),
-                entity.getConversationId(),
-                entity.getRole(),
-                entity.getContent(),
-                entity.getCreatedAt() == null ? null : entity.getCreatedAt().toString(),
-                entity.getStatus(),
-                entity.getModel(),
-                entity.getOperations(),
-                entity.getMetadata()
+                TRANSIENT_CONVERSATION_ID,
+                title == null || title.isBlank() ? "Agent Session" : title,
+                resolveAgentModel(model, null),
+                "idle",
+                now,
+                now
         );
     }
 
     private AgentOperationDto operation(String type, String title, String detail, String status) {
         return new AgentOperationDto(UUID.randomUUID().toString(), type, title, detail, status, LocalDateTime.now(clock).toString());
+    }
+
+    private String resolveConversationId(String conversationId) {
+        return conversationId == null || conversationId.isBlank()
+                ? TRANSIENT_CONVERSATION_ID
+                : conversationId;
     }
 
     private String resolveAgentModel(String requestedModel, String conversationModel) {

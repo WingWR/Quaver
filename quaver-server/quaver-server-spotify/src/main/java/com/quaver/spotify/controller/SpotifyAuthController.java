@@ -2,6 +2,7 @@ package com.quaver.spotify.controller;
 
 import com.quaver.common.config.QuaverFrontendProperties;
 import com.quaver.spotify.dto.SpotifyAuthStatusDto;
+import com.quaver.spotify.dto.SpotifyPlayerTokenDto;
 import com.quaver.spotify.service.SpotifyAuthService;
 import java.net.URI;
 import org.springframework.http.HttpHeaders;
@@ -59,6 +60,11 @@ public class SpotifyAuthController {
     @GetMapping("/status")
     public SpotifyAuthStatusDto status() {
         return spotifyAuthService.getCurrentStatus();
+    }
+
+    @GetMapping("/player-token")
+    public SpotifyPlayerTokenDto playerToken() {
+        return spotifyAuthService.getPlayerToken();
     }
 
     private ResponseEntity<Void> redirectToFrontend(String status, String error) {

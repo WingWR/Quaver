@@ -19,6 +19,8 @@ public class AgentTrackSearchRequest {
 
     private Integer limit;
 
+    private Integer offset;
+
     private String selectedPlaylistId;
 
     private List<String> playlistIds;

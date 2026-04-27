@@ -86,30 +86,5 @@ CREATE TABLE IF NOT EXISTS qv_spotify_authorization (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS qv_agent_conversation (
-    id VARCHAR(128) PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    model VARCHAR(128) NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'idle',
-    is_default_conversation BOOLEAN NOT NULL DEFAULT FALSE,
-    metadata JSON NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_qv_agent_conversation_user FOREIGN KEY (user_id) REFERENCES qv_user (id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS qv_agent_message (
-    id VARCHAR(128) PRIMARY KEY,
-    conversation_id VARCHAR(128) NOT NULL,
-    user_id VARCHAR(64) NOT NULL,
-    role VARCHAR(32) NOT NULL,
-    content TEXT NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'completed',
-    model VARCHAR(128) NULL,
-    operations JSON NULL,
-    metadata JSON NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_qv_agent_message_conversation FOREIGN KEY (conversation_id) REFERENCES qv_agent_conversation (id) ON DELETE CASCADE,
-    CONSTRAINT fk_qv_agent_message_user FOREIGN KEY (user_id) REFERENCES qv_user (id) ON DELETE CASCADE
-);
+DROP TABLE IF EXISTS qv_agent_message;
+DROP TABLE IF EXISTS qv_agent_conversation;

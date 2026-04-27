@@ -4,12 +4,15 @@ import com.quaver.library.dto.LibraryBootstrapResponse;
 import com.quaver.library.dto.LibraryMutationResponse;
 import com.quaver.library.dto.PlaybackStartRequest;
 import com.quaver.library.dto.PlaybackStateUpdateRequest;
+import com.quaver.library.dto.PlaylistCreateRequest;
 import com.quaver.library.dto.PlaylistTrackMutationRequest;
+import com.quaver.library.dto.PlaylistUpdateRequest;
 import com.quaver.library.dto.QueueMutationRequest;
 import com.quaver.library.service.LibraryService;
 import com.quaver.common.model.music.PlaybackSource;
 import com.quaver.common.model.music.PlaybackStateView;
 import com.quaver.common.model.music.RepeatMode;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,6 +46,22 @@ public class LibraryController {
         return libraryService.insertTrackNext(request.getTrackId());
     }
 
+    @PostMapping("/playlists")
+    public LibraryMutationResponse createPlaylist(@RequestBody PlaylistCreateRequest request) {
+        return libraryService.createPlaylist(request.getName(), request.getDescription());
+    }
+
+    @PatchMapping("/playlists/{playlistId}")
+    public LibraryMutationResponse updatePlaylist(@PathVariable String playlistId,
+                                                  @RequestBody PlaylistUpdateRequest request) {
+        return libraryService.updatePlaylist(playlistId, request.getName(), request.getDescription());
+    }
+
+    @DeleteMapping("/playlists/{playlistId}")
+    public LibraryMutationResponse deletePlaylist(@PathVariable String playlistId) {
+        return libraryService.deletePlaylist(playlistId);
+    }
+
     @PostMapping("/playback/start")
     public LibraryMutationResponse startPlayback(@RequestBody PlaybackStartRequest request) {
         PlaybackStateView playback = libraryService.startPlayback(
@@ -50,7 +69,7 @@ public class LibraryController {
                 request.getStartIndex() == null ? 0 : request.getStartIndex(),
                 PlaybackSource.fromValue(request.getPlaybackSource())
         );
-        return new LibraryMutationResponse(true, "Playback session started.", playback, null);
+        return new LibraryMutationResponse(true, "Playback session started.", playback, null, null);
     }
 
     @PatchMapping("/playback/state")
@@ -64,7 +83,7 @@ public class LibraryController {
                 request.getIsShuffleEnabled(),
                 request.getRepeatMode() == null ? null : RepeatMode.fromValue(request.getRepeatMode())
         );
-        return new LibraryMutationResponse(true, "Playback session updated.", playback, null);
+        return new LibraryMutationResponse(true, "Playback session updated.", playback, null, null);
     }
 
     @PostMapping("/playlists/{playlistId}/tracks")
