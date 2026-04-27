@@ -6,10 +6,12 @@ import WorkspaceSidebar from "../components/Sidebar/WorkspaceSidebar";
 import UserSessionButton from "../features/auth/components/UserSessionButton";
 import { useLibraryBootstrap } from "../features/library/hooks/useLibraryBootstrap";
 import { useSpotifyBootstrap } from "../hooks/useSpotifyBootstrap";
+import { useSpotifyWebPlaybackSdk } from "../hooks/useSpotifyWebPlaybackSdk";
 
 export default function MainApp() {
   useLibraryBootstrap();
   useSpotifyBootstrap();
+  useSpotifyWebPlaybackSdk();
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-brand-black text-white lg:flex-row">

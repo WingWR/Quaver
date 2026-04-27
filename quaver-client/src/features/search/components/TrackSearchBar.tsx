@@ -45,8 +45,10 @@ export default function TrackSearchBar() {
     results,
     message,
     lastQuery,
+    hasMore,
     resultCountLabel,
     submitSearch,
+    loadMoreSearch,
     clearSearch,
   } = useAgentTrackSearch();
   const [contextMenu, setContextMenu] = useState<{
@@ -104,10 +106,10 @@ export default function TrackSearchBar() {
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
-                  void submitSearch();
+                  void submitSearch(query, 0, false);
                 }
               }}
-              placeholder="Search songs, artists, moods, or natural language"
+              placeholder="Search a track or artist"
               className="w-full bg-transparent text-sm text-white outline-none placeholder:text-brand-grey"
             />
 
@@ -139,14 +141,14 @@ export default function TrackSearchBar() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void submitSearch()}
+                  onClick={() => void submitSearch(query, 0, false)}
                   className="rounded-full border border-cyan-200/[0.24] bg-[linear-gradient(135deg,rgba(52,211,153,0.18),rgba(56,189,248,0.14))] px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:border-cyan-100/[0.36]"
                 >
                   Search
                 </button>
               </div>
 
-              <div className="mt-4">
+              <div className="scrollbar-brand mt-4 max-h-[32rem] overflow-y-auto pr-1">
                 {status === "loading" ? (
                   <div className="space-y-2">
                     {Array.from({ length: 3 }).map((_, index) => (
@@ -168,7 +170,7 @@ export default function TrackSearchBar() {
                       <button
                         key={track.id}
                         type="button"
-                        onClick={() => void playTrackList(results, index)}
+                        onClick={() => void playTrackList([track], 0, `search-track-${track.id}`)}
                         onContextMenu={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -188,14 +190,27 @@ export default function TrackSearchBar() {
                         <ResultMeta track={track} />
                       </button>
                     ))}
+                    {hasMore ? (
+                      <button
+                        type="button"
+                        onClick={() => void loadMoreSearch()}
+                        className="mt-2 w-full rounded-2xl border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-center text-xs font-medium text-white/78 transition hover:bg-white/[0.07] hover:text-white"
+                      >
+                        Load more
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="rounded-[20px] border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-5">
                     <p className="text-sm font-medium text-white">
-                      {lastQuery ? "No playable tracks yet" : "Search is ready"}
+                      {status === "error"
+                        ? "Search is temporarily unavailable"
+                        : lastQuery
+                          ? "No matching tracks yet"
+                          : "Search is ready"}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-brand-grey">
-                      {message ?? "Use natural language, artists, genres, moods, or playlist context."}
+                      {message ?? "Search by track name, artist, or a short natural-language song request."}
                     </p>
                   </div>
                 )}

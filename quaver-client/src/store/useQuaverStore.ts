@@ -16,7 +16,10 @@ interface SpotifyState {
   deviceId: string | null;
   userName: string | null;
   error: string | null;
+  playerReady: boolean;
+  playerError: string | null;
   requiresPremium: boolean;
+  scopes: string[];
 }
 
 interface ResourceState {
@@ -74,6 +77,7 @@ interface QuaverStore {
   setCanvasView: (view: CanvasView) => void;
   setWorkspaceView: (view: WorkspaceView) => void;
   hydrateBackendLibrary: (payload: LibraryBootstrapResponse) => void;
+  replaceBackendPlaylists: (playlists: Playlist[], selectedPlaylistId?: string) => void;
   setLibraryState: (state: Partial<ResourceState>) => void;
   setSpotifyState: (state: Partial<SpotifyState>) => void;
 }
@@ -132,15 +136,29 @@ function normalizeSource(source?: MusicSource): MusicSource {
   return source === "spotify" ? "spotify" : "backend";
 }
 
+function derivePlaylistCover(playlist: Playlist) {
+  return playlist.tracks[0]?.artwork || playlist.cover;
+}
+
+function normalizePlaylist(playlist: Playlist): Playlist {
+  return {
+    ...playlist,
+    source: normalizeSource(playlist.source),
+    cover: derivePlaylistCover(playlist),
+  };
+}
+
 function mergePlaylistsBySource(
   currentPlaylists: Playlist[],
   source: MusicSource,
   incomingPlaylists: Playlist[],
 ) {
-  const nextPlaylists = incomingPlaylists.map((playlist) => ({
-    ...playlist,
-    source,
-  }));
+  const nextPlaylists = incomingPlaylists.map((playlist) =>
+    normalizePlaylist({
+      ...playlist,
+      source,
+    }),
+  );
   const otherPlaylists = currentPlaylists.filter(
     (playlist) => normalizeSource(playlist.source) !== source,
   );
@@ -168,7 +186,10 @@ const initialSpotifyState: SpotifyState = {
   deviceId: null,
   userName: null,
   error: null,
+  playerReady: false,
+  playerError: null,
   requiresPremium: false,
+  scopes: [],
 };
 
 const initialResourceState: ResourceState = {
@@ -251,7 +272,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
   updatePlaylistTracks: (playlistId, tracks) =>
     set((state) => ({
       playlists: state.playlists.map((playlist) =>
-        playlist.id === playlistId ? { ...playlist, tracks } : playlist,
+        playlist.id === playlistId ? normalizePlaylist({ ...playlist, tracks }) : playlist,
       ),
     })),
   addTrackToPlaylist: (playlistId, track) =>
@@ -259,7 +280,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
       playlists: state.playlists.map((playlist) =>
         playlist.id === playlistId &&
         !playlist.tracks.some((existingTrack) => existingTrack.id === track.id)
-          ? { ...playlist, tracks: [...playlist.tracks, track] }
+          ? normalizePlaylist({ ...playlist, tracks: [...playlist.tracks, track] })
           : playlist,
       ),
     })),
@@ -435,6 +456,18 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
           : false,
         repeatMode: playback ? playback.repeatMode ?? state.repeatMode : "off",
         queueRevision: state.queueRevision + 1,
+      };
+    }),
+  replaceBackendPlaylists: (incomingPlaylists, selectedPlaylistId) =>
+    set((state) => {
+      const playlists = mergePlaylistsBySource(state.playlists, "backend", incomingPlaylists);
+      return {
+        playlists,
+        selectedPlaylistId: resolveSelectedPlaylistId(playlists, [
+          selectedPlaylistId,
+          state.selectedPlaylistId,
+          incomingPlaylists[0]?.id,
+        ]),
       };
     }),
   setLibraryState: (library) =>

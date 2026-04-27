@@ -139,14 +139,14 @@ function EmptyPlaylistTracks({ playlist }: { playlist: Playlist }) {
       <div>
         <p className="text-sm font-semibold text-white">This playlist is empty</p>
         <p className="mt-2 max-w-lg text-sm leading-6 text-brand-grey">
-          {playlist.source === "spotify"
-            ? "No tracks are available for this Spotify playlist yet. It may be empty or still waiting for Spotify sync."
-            : "Add tracks from search or another source when you are ready to build this playlist."}
+          Add tracks from search results or the queue when you are ready to build this playlist.
         </p>
       </div>
     </div>
   );
 }
+
+const REQUIRED_SPOTIFY_SCOPES = ["streaming", "playlist-read-collaborative"];
 
 export default function LibraryWorkspaceView() {
   const playlists = useQuaverStore((state) => state.playlists);
@@ -173,6 +173,12 @@ export default function LibraryWorkspaceView() {
   } = usePlaybackControllerRuntime();
   const selectedPlaylist =
     playlists.find((playlist) => playlist.id === selectedPlaylistId) ?? null;
+  const needsSpotifyReconnect =
+    spotify.isConfigured &&
+    (!spotify.isAuthenticated ||
+      (spotify.isAuthenticated &&
+        REQUIRED_SPOTIFY_SCOPES.some((scope) => !spotify.scopes.includes(scope))));
+  const spotifyMessage = spotify.error ?? spotify.playerError;
 
   useEffect(() => {
     if (canvasView === "lyrics" && currentTrack?.source !== "spotify") {
@@ -209,7 +215,7 @@ export default function LibraryWorkspaceView() {
               <CoverArt playlist={selectedPlaylist} />
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.35em] text-brand-grey">
-                  {selectedPlaylist.source === "spotify" ? "Spotify Playlist" : "Backend Playlist"}
+                  Quaver Playlist
                 </p>
                 <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
                   {selectedPlaylist.name}
@@ -217,8 +223,8 @@ export default function LibraryWorkspaceView() {
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-grey">
                   {selectedPlaylist.description || "No description has been added yet."}
                 </p>
-                {spotify.error ? (
-                  <p className="mt-3 text-sm text-[#d8c58d]">{spotify.error}</p>
+                {spotifyMessage ? (
+                  <p className="mt-3 text-sm text-[#d8c58d]">{spotifyMessage}</p>
                 ) : null}
               </div>
             </div>
@@ -236,13 +242,24 @@ export default function LibraryWorkspaceView() {
               >
                 {library.status === "error" ? "Waiting backend" : "Library ready"}
               </div>
-              {spotify.isConfigured && !spotify.isAuthenticated ? (
+              {spotify.isAuthenticated ? (
+                <div
+                  className={`rounded-full px-4 py-2 text-sm ${
+                    spotify.playerReady
+                      ? "bg-spotify-green/12 text-spotify-green"
+                      : "bg-white/[0.045] text-brand-grey"
+                  }`}
+                >
+                  {spotify.playerReady ? "Web player ready" : "Web player loading"}
+                </div>
+              ) : null}
+              {needsSpotifyReconnect ? (
                 <button
                   type="button"
                   onClick={() => void connectSpotify()}
                   className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f3f3]"
                 >
-                  Connect Spotify
+                  {spotify.isAuthenticated ? "Reconnect Bridge" : "Authorize Bridge"}
                 </button>
               ) : null}
             </div>
@@ -333,21 +350,21 @@ export default function LibraryWorkspaceView() {
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-brand-grey">
             {library.message ??
-              "This user has not created or connected any playlists. The library can stay empty; queue and playback will appear as tracks are played."}
+              "This user has not created any playlists yet. The library can stay empty; queue and playback will appear as tracks are played."}
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
             <div className="rounded-full bg-white/[0.04] px-4 py-2 text-sm text-brand-grey">
               Status: {library.status}
             </div>
-            {spotify.isConfigured && !spotify.isAuthenticated ? (
-              <button
-                type="button"
-                onClick={() => void connectSpotify()}
-                className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f3f3]"
-              >
-                Connect Spotify
-              </button>
+            {needsSpotifyReconnect ? (
+                <button
+                  type="button"
+                  onClick={() => void connectSpotify()}
+                  className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f3f3]"
+                >
+                {spotify.isAuthenticated ? "Reconnect Bridge" : "Authorize Bridge"}
+                </button>
             ) : null}
           </div>
         </div>
