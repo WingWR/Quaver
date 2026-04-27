@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatBackendError } from "../../../api/http";
+import { formatBackendError, getBackendRetryAfterSeconds, isBackendRateLimitError } from "../../../api/http";
 import { appConfig } from "../../../config/app";
 import { useQuaverStore } from "../../../store/useQuaverStore";
 import { useUiStore } from "../../../store/useUiStore";
@@ -8,13 +8,11 @@ import type { AgentTrackSearchResponse } from "../api/types";
 
 type SearchStatus = "idle" | "loading" | "ready" | "empty" | "error";
 
+const SEARCH_PAGE_SIZE = 8;
 const SEARCH_UNAVAILABLE_MESSAGE =
   "Search backend is not ready. The search box stays available, but results will appear after the backend is connected.";
 
 export function useAgentTrackSearch() {
-  const playlists = useQuaverStore((state) => state.playlists);
-  const queue = useQuaverStore((state) => state.queue);
-  const selectedPlaylistId = useQuaverStore((state) => state.selectedPlaylistId);
   const pushNotice = useUiStore((state) => state.pushNotice);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -23,6 +21,8 @@ export function useAgentTrackSearch() {
   const [message, setMessage] = useState<string | null>(null);
   const [lastQuery, setLastQuery] = useState("");
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [nextOffset, setNextOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const activeRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export function useAgentTrackSearch() {
     };
   }, []);
 
-  async function submitSearch(nextQuery = query) {
+  async function submitSearch(nextQuery = query, offset = 0, append = false) {
     const trimmedQuery = nextQuery.trim();
 
     if (!trimmedQuery) {
@@ -40,6 +40,8 @@ export function useAgentTrackSearch() {
       setMessage(null);
       setLastQuery("");
       setRequestId(null);
+      setNextOffset(0);
+      setHasMore(false);
       return;
     }
 
@@ -57,12 +59,10 @@ export function useAgentTrackSearch() {
         {
           query: trimmedQuery,
           model: appConfig.agent.searchModel,
-          limit: 8,
-          selectedPlaylistId,
-          playlistIds: playlists.map((playlist) => playlist.id),
-          queueTrackIds: queue.map((track) => track.id),
+          limit: SEARCH_PAGE_SIZE,
+          offset,
           metadata: {
-            scope: "music_search",
+            scope: "track_search",
             workspace: "player_bar",
           },
         },
@@ -73,9 +73,28 @@ export function useAgentTrackSearch() {
         return;
       }
 
-      setResults(response.tracks);
+      setResults((currentResults) => {
+        if (!append) {
+          return response.tracks;
+        }
+
+        const seen = new Set(currentResults.map((track) => track.spotifyId ?? track.id));
+        return [
+          ...currentResults,
+          ...response.tracks.filter((track) => {
+            const key = track.spotifyId ?? track.id;
+            if (seen.has(key)) {
+              return false;
+            }
+            seen.add(key);
+            return true;
+          }),
+        ];
+      });
       setRequestId(response.requestId ?? null);
-      setStatus(response.status === "error" ? "error" : response.tracks.length ? "ready" : "empty");
+      setStatus(response.status === "error" ? "error" : append || response.tracks.length ? "ready" : "empty");
+      setHasMore(Boolean(response.hasMore));
+      setNextOffset(offset + (response.limit ?? SEARCH_PAGE_SIZE));
       setMessage(
         response.tracks.length
           ? null
@@ -86,16 +105,27 @@ export function useAgentTrackSearch() {
         return;
       }
 
-      const nextMessage = formatBackendError(error, SEARCH_UNAVAILABLE_MESSAGE);
+      const nextMessage = isBackendRateLimitError(error)
+        ? (() => {
+            const retryAfterSeconds = getBackendRetryAfterSeconds(error);
+            return retryAfterSeconds == null
+              ? "Spotify search is a little busy right now. Please retry in a moment."
+              : `Spotify search is a little busy right now. Please retry in ${retryAfterSeconds} seconds.`;
+          })()
+        : formatBackendError(error, SEARCH_UNAVAILABLE_MESSAGE);
       setResults([]);
       setRequestId(null);
+      setNextOffset(0);
+      setHasMore(false);
       setStatus("error");
       setMessage(nextMessage);
-      pushNotice({
-        message: nextMessage,
-        variant: "warning",
-        dedupeKey: "agent-track-search",
-      });
+      if (!isBackendRateLimitError(error)) {
+        pushNotice({
+          message: nextMessage,
+          variant: "warning",
+          dedupeKey: "agent-track-search",
+        });
+      }
     }
   }
 
@@ -107,6 +137,16 @@ export function useAgentTrackSearch() {
     setMessage(null);
     setLastQuery("");
     setRequestId(null);
+    setNextOffset(0);
+    setHasMore(false);
+  }
+
+  async function loadMoreSearch() {
+    if (!lastQuery || status === "loading" || !hasMore) {
+      return;
+    }
+
+    await submitSearch(lastQuery, nextOffset, true);
   }
 
   const resultCountLabel = useMemo(() => {
@@ -115,7 +155,7 @@ export function useAgentTrackSearch() {
     }
 
     if (status === "ready") {
-      return `${results.length} results`;
+      return hasMore ? `${results.length}+ results` : `${results.length} results`;
     }
 
     if (status === "empty") {
@@ -127,7 +167,7 @@ export function useAgentTrackSearch() {
     }
 
     return "Advanced search";
-  }, [results.length, status]);
+  }, [hasMore, results.length, status]);
 
   return {
     isOpen,
@@ -139,8 +179,10 @@ export function useAgentTrackSearch() {
     message,
     lastQuery,
     requestId,
+    hasMore,
     resultCountLabel,
     submitSearch,
+    loadMoreSearch,
     clearSearch,
   };
 }

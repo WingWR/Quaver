@@ -4,7 +4,9 @@ import type {
   LibraryMutationResponse,
   PlaybackStartRequest,
   PlaybackStateUpdateRequest,
+  PlaylistCreateRequest,
   PlaylistTrackMutationRequest,
+  PlaylistUpdateRequest,
   QueueMutationRequest,
 } from "./types";
 
@@ -25,6 +27,29 @@ export function appendTrackToBackendQueue(payload: QueueMutationRequest) {
   return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/queue`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function createBackendPlaylist(payload: PlaylistCreateRequest) {
+  return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/playlists`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateBackendPlaylist(
+  playlistId: string,
+  payload: PlaylistUpdateRequest,
+) {
+  return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/playlists/${playlistId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteBackendPlaylist(playlistId: string) {
+  return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/playlists/${playlistId}`, {
+    method: "DELETE",
   });
 }
 

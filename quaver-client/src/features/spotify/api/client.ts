@@ -4,6 +4,7 @@ import type {
   SpotifyBridgeRedirectResult,
   SpotifyPlaybackOptions,
   SpotifyPlaybackState,
+  SpotifyPlayerToken,
   SpotifyPlaylist,
   SpotifyProfile,
 } from "./types";
@@ -35,6 +36,12 @@ export function consumeSpotifyBridgeRedirect(): SpotifyBridgeRedirectResult {
 
 export function fetchSpotifyAuthStatus(signal?: AbortSignal) {
   return backendRequest<SpotifyAuthStatus>(`${SPOTIFY_BASE_PATH}/auth/status`, { signal });
+}
+
+export function fetchSpotifyPlayerToken(signal?: AbortSignal) {
+  return backendRequest<SpotifyPlayerToken>(`${SPOTIFY_BASE_PATH}/auth/player-token`, {
+    signal,
+  });
 }
 
 export function fetchSpotifyProfile(signal?: AbortSignal) {
