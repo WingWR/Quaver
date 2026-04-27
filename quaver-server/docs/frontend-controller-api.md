@@ -97,11 +97,11 @@ Request body:
 
 ### `GET /agent/conversations/default`
 
-Returns the default conversation for the configured Quaver default user.
+Returns a transient Agent session payload. Agent messages are not persisted.
 
 ### `POST /agent/conversations`
 
-Creates a conversation.
+Creates a transient Agent session. No Agent conversation rows are stored in MySQL.
 
 Request body:
 
@@ -118,7 +118,7 @@ Request body:
 
 ### `POST /agent/conversations/{conversationId}/messages`
 
-Stores the user message, parses a lightweight command intent, and returns a persisted assistant reply plus operation history.
+Parses a lightweight command intent and returns a transient assistant reply plus operation history. Messages are not saved to MySQL.
 
 Request body:
 
@@ -144,6 +144,7 @@ Request body:
   "query": "粤语 chill",
   "model": "gpt-4.1-mini",
   "limit": 8,
+  "offset": 0,
   "selectedPlaylistId": null,
   "playlistIds": [],
   "queueTrackIds": [],
@@ -194,6 +195,7 @@ Response shape:
 - `GET /spotify/auth/login`
 - `GET /spotify/auth/callback?code=...&state=...`
 - `GET /spotify/auth/status`
+- `GET /spotify/auth/player-token`
 
 Frontend should start Spotify connection by navigating the browser to
 `/spotify/auth/login`. The backend owns the OAuth state, exchanges the callback
@@ -202,6 +204,9 @@ frontend base URL with `spotifyBridge=connected` or `spotifyBridge=error`.
 If `quaver.spotify.bridge-refresh-token` is configured, `/spotify/auth/status`
 can connect the backend bridge from that refresh token without browser-side
 Spotify tokens.
+`/spotify/auth/player-token` returns the short-lived bridge access token used
+only by the Spotify Web Playback SDK so the browser can register itself as a
+Spotify Connect playback device. It requires the `streaming` OAuth scope.
 
 ### Catalog
 
@@ -213,7 +218,9 @@ Spotify tokens.
 
 Track search and track lookup use Spotify application credentials and do not
 require the bridge account OAuth flow to be completed first. Profile and
-playlist endpoints use the backend-held bridge authorization.
+playlist endpoints use the backend-held bridge authorization. Collaborative
+playlist track reads require `playlist-read-collaborative`, so reconnect Spotify
+after adding that scope.
 
 ### Playback
 

@@ -23,7 +23,7 @@ This design is based on Spotify Web API official authorization and playback mode
 - Private user resources require user authorization.
 - Playback control endpoints require Spotify Premium.
 - Redirect URI must be registered exactly in Spotify Developer Dashboard.
-- Access token and refresh token must be handled by the backend, not exposed in frontend code.
+- Refresh tokens must stay on the backend. The frontend may request a short-lived access token only for Spotify Web Playback SDK browser playback.
 
 Official references:
 
@@ -96,6 +96,10 @@ The bridge account must complete the Spotify authorization flow once so that Age
 
 The backend should then manage refresh automatically.
 
+Browser playback additionally needs a short-lived access token with the `streaming`
+scope so Spotify Web Playback SDK can create a Spotify Connect device in the
+frontend.
+
 ### Required scopes
 
 Current bridge-mode baseline should request:
@@ -105,7 +109,9 @@ Current bridge-mode baseline should request:
 - `user-read-playback-state`
 - `user-read-currently-playing`
 - `user-modify-playback-state`
+- `streaming`
 - `playlist-read-private`
+- `playlist-read-collaborative`
 - `playlist-modify-private`
 - `playlist-modify-public`
 - `user-library-read`

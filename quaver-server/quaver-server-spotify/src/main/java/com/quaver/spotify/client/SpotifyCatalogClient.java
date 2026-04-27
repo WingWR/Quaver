@@ -21,11 +21,21 @@ public class SpotifyCatalogClient {
     }
 
     public List<SpotifyTrackItem> searchTracks(String accessToken, String query, int limit) {
+        return searchTracks(accessToken, query, limit, 0, null);
+    }
+
+    public List<SpotifyTrackItem> searchTracks(String accessToken, String query, int limit, int offset) {
+        return searchTracks(accessToken, query, limit, offset, null);
+    }
+
+    public List<SpotifyTrackItem> searchTracks(String accessToken, String query, int limit, int offset, String market) {
         SearchResponse response = restClient.get()
                 .uri(UriComponentsBuilder.fromPath("/v1/search")
                         .queryParam("q", query)
                         .queryParam("type", "track")
                         .queryParam("limit", limit)
+                        .queryParam("offset", Math.max(0, offset))
+                        .queryParamIfPresent("market", Optional.ofNullable(market).filter(value -> !value.isBlank()))
                         .build()
                         .encode()
                         .toUri())

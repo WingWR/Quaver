@@ -30,22 +30,18 @@ public class DefaultAgentAiService implements AgentAiService {
         }
 
         String prompt = """
-                You prepare music search queries for a Spotify-backed player.
+                You prepare single-track music search queries for a Spotify-backed player.
                 Return only compact JSON with this shape: {"query":"..."}.
-                Preserve artist names, song names, languages, genres, moods, and user intent.
+                Preserve artist names, exact song names, languages, genres, and user intent.
                 Remove filler words and do not invent unavailable facts.
+                Never expand the request into a playlist, mix, recommendation set, or multiple-song query unless the user explicitly typed multiple song names.
+                Prefer exact track lookup phrasing over broad thematic wording.
                 """;
 
         String input = """
                 User query: %s
-                Selected playlist id: %s
-                Playlist ids: %s
-                Queue track ids: %s
                 """.formatted(
-                rawQuery,
-                request.getSelectedPlaylistId(),
-                request.getPlaylistIds(),
-                request.getQueueTrackIds()
+                rawQuery
         );
 
         try {

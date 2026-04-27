@@ -18,6 +18,12 @@ public interface LibraryService {
 
     LibraryMutationResponse insertTrackNext(String trackId);
 
+    LibraryMutationResponse createPlaylist(String name, String description);
+
+    LibraryMutationResponse updatePlaylist(String playlistId, String name, String description);
+
+    LibraryMutationResponse deletePlaylist(String playlistId);
+
     LibraryMutationResponse addTrackToPlaylist(String playlistId, String trackId);
 
     PlaybackStateView startPlayback(List<TrackView> queue, int startIndex, PlaybackSource playbackSource);

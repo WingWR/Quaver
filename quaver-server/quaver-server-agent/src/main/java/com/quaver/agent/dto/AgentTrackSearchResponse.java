@@ -19,6 +19,12 @@ public class AgentTrackSearchResponse {
 
     private int total;
 
+    private int limit;
+
+    private int offset;
+
+    private boolean hasMore;
+
     private String model;
 
     private String requestId;
