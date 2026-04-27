@@ -13,6 +13,12 @@ export interface SpotifyAuthStatus {
   message?: string;
 }
 
+export interface SpotifyPlayerToken {
+  accessToken: string;
+  expiresAt?: string;
+  scopes?: string[];
+}
+
 export interface SpotifyProfile {
   displayName?: string;
   email?: string;

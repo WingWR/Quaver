@@ -26,6 +26,16 @@ export interface PlaylistTrackMutationRequest {
   trackId: string;
 }
 
+export interface PlaylistCreateRequest {
+  name?: string;
+  description?: string;
+}
+
+export interface PlaylistUpdateRequest {
+  name?: string;
+  description?: string;
+}
+
 export interface PlaybackStartRequest {
   tracks: Track[];
   startIndex?: number;
@@ -47,4 +57,5 @@ export interface LibraryMutationResponse {
   message?: string;
   playback?: BackendPlaybackState;
   playlists?: Playlist[];
+  selectedPlaylistId?: string;
 }

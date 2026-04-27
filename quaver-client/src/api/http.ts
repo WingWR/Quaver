@@ -1,4 +1,5 @@
 import { appConfig } from "../config/app";
+import { useAuthStore } from "../features/auth/store/useAuthStore";
 
 export class BackendApiError extends Error {
   status: number;
@@ -12,6 +13,11 @@ export class BackendApiError extends Error {
   }
 }
 
+interface BackendErrorPayload {
+  message?: string;
+  retryAfterSeconds?: number;
+}
+
 export function resolveBackendUrl(path: string) {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -20,6 +26,19 @@ export function resolveBackendUrl(path: string) {
   const baseUrl = appConfig.backend.baseUrl.replace(/\/+$/, "");
   const nextPath = path.startsWith("/") ? path : `/${path}`;
   return `${baseUrl}${nextPath}`;
+}
+
+function buildQuaverUserHeaders() {
+  const user = useAuthStore.getState().user;
+  if (!user) {
+    return undefined;
+  }
+
+  return {
+    "x-quaver-user-id": user.id,
+    "x-quaver-user-name": user.name,
+    "x-quaver-user-email": user.email,
+  };
 }
 
 async function parseResponseBody(response: Response) {
@@ -75,6 +94,7 @@ export async function backendRequest<T>(path: string, init: RequestInit = {}) {
         Accept: "application/json",
         ...(rest.body ? { "Content-Type": "application/json" } : {}),
         ...(appConfig.backend.apiKey ? { "x-api-key": appConfig.backend.apiKey } : {}),
+        ...(buildQuaverUserHeaders() ?? {}),
         ...(headers ?? {}),
       },
     });
@@ -117,4 +137,17 @@ export function formatBackendError(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+export function isBackendRateLimitError(error: unknown) {
+  return error instanceof BackendApiError && error.status === 429;
+}
+
+export function getBackendRetryAfterSeconds(error: unknown) {
+  if (!(error instanceof BackendApiError) || !error.payload || typeof error.payload !== "object") {
+    return null;
+  }
+
+  const payload = error.payload as BackendErrorPayload;
+  return typeof payload.retryAfterSeconds === "number" ? payload.retryAfterSeconds : null;
 }

@@ -1,17 +1,45 @@
 import { startTransition, useEffect } from "react";
-import { formatBackendError } from "../api/http";
+import { formatBackendError, isBackendRateLimitError } from "../api/http";
 import {
   consumeSpotifyBridgeRedirect,
   fetchSpotifyAuthStatus,
   fetchSpotifyPlaybackState,
-  fetchSpotifyPlaylistTracks,
-  fetchSpotifyPlaylists,
-  fetchSpotifyProfile,
 } from "../features/spotify/api/client";
 import { useQuaverStore } from "../store/useQuaverStore";
+import type { Track } from "../types/music";
 
 const SPOTIFY_UNAVAILABLE_MESSAGE =
   "Spotify bridge is not ready. Connect Spotify after the backend is running.";
+const REQUIRED_SPOTIFY_SCOPES = ["streaming", "playlist-read-collaborative"];
+
+function sameTrack(left?: Track, right?: Track) {
+  if (!left || !right) {
+    return false;
+  }
+
+  return (left.spotifyId ?? left.id) === (right.spotifyId ?? right.id);
+}
+
+function syncSpotifyPlaybackSnapshot(playback: Awaited<ReturnType<typeof fetchSpotifyPlaybackState>>) {
+  const { queue, currentTrackIndex } = useQuaverStore.getState();
+  const spotifyCurrentTrack = playback.queue[playback.currentTrackIndex] ?? playback.queue[0];
+  const nextQueue =
+    spotifyCurrentTrack && queue.some((track) => sameTrack(track, spotifyCurrentTrack))
+      ? queue
+      : playback.queue.length
+        ? playback.queue
+        : queue;
+  const nextCurrentTrackIndex =
+    spotifyCurrentTrack && nextQueue.length
+      ? Math.max(0, nextQueue.findIndex((track) => sameTrack(track, spotifyCurrentTrack)))
+      : currentTrackIndex;
+
+  useQuaverStore.getState().syncPlayback({
+    ...playback,
+    queue: nextQueue,
+    currentTrackIndex: nextCurrentTrackIndex,
+  });
+}
 
 function parseSpotifyError(error: unknown) {
   const message = formatBackendError(error, SPOTIFY_UNAVAILABLE_MESSAGE);
@@ -26,21 +54,28 @@ function parseSpotifyError(error: unknown) {
   return {
     message,
     requiresPremium: false,
+    rateLimited: isBackendRateLimitError(error),
   };
 }
 
 async function syncSpotifyPlaybackState() {
-  const { syncPlayback, setSpotifyState } = useQuaverStore.getState();
+  const { setSpotifyState } = useQuaverStore.getState();
 
   try {
     const playback = await fetchSpotifyPlaybackState();
-    syncPlayback(playback);
+    syncSpotifyPlaybackSnapshot(playback);
     setSpotifyState({
       error: null,
       requiresPremium: false,
     });
   } catch (error) {
     const parsed = parseSpotifyError(error);
+    if (parsed.rateLimited) {
+      setSpotifyState({
+        requiresPremium: false,
+      });
+      return;
+    }
     setSpotifyState({
       error: parsed.message,
       requiresPremium: parsed.requiresPremium,
@@ -49,11 +84,7 @@ async function syncSpotifyPlaybackState() {
 }
 
 export function useSpotifyBootstrap() {
-  const playlists = useQuaverStore((state) => state.playlists);
-  const selectedPlaylistId = useQuaverStore((state) => state.selectedPlaylistId);
   const spotify = useQuaverStore((state) => state.spotify);
-  const replacePlaylistsBySource = useQuaverStore((state) => state.replacePlaylistsBySource);
-  const updatePlaylistTracks = useQuaverStore((state) => state.updatePlaylistTracks);
   const setSpotifyState = useQuaverStore((state) => state.setSpotifyState);
 
   useEffect(() => {
@@ -74,38 +105,37 @@ export function useSpotifyBootstrap() {
           return;
         }
 
+        const missingScopes = REQUIRED_SPOTIFY_SCOPES.filter(
+          (scope) => !(status.scopes ?? []).includes(scope),
+        );
+
         setSpotifyState({
           isConfigured: status.enabled,
           isAuthenticated: status.authorized,
           deviceId: null,
+          playerReady: false,
+          playerError: null,
           userName: status.developerAccount || null,
-          error:
-            redirectResult.status === "connected"
+          scopes: status.scopes ?? [],
+          error: status.authorized && missingScopes.length
+            ? `Spotify is connected, but it needs a fresh authorization with: ${missingScopes.join(", ")}.`
+            : redirectResult.status === "connected"
               ? null
               : redirectResult.error ?? (status.authorized ? null : status.message ?? null),
           requiresPremium: false,
         });
 
         if (!status.enabled || !status.authorized) {
-          replacePlaylistsBySource("spotify", []);
-          return;
-        }
-
-        const [profile, spotifyPlaylists] = await Promise.all([
-          fetchSpotifyProfile(controller.signal),
-          fetchSpotifyPlaylists(controller.signal),
-        ]);
-
-        if (controller.signal.aborted) {
           return;
         }
 
         startTransition(() => {
           setSpotifyState({
-            userName: profile.displayName ?? status.developerAccount ?? "Spotify listener",
-            error: null,
+            userName: status.developerAccount ?? "Spotify bridge",
+            error: missingScopes.length
+              ? `Spotify is connected, but it needs a fresh authorization with: ${missingScopes.join(", ")}.`
+              : null,
           });
-          replacePlaylistsBySource("spotify", spotifyPlaylists);
         });
       } catch (error) {
         if (controller.signal.aborted) {
@@ -116,8 +146,12 @@ export function useSpotifyBootstrap() {
         setSpotifyState({
           isConfigured: false,
           isAuthenticated: false,
+          deviceId: null,
+          playerReady: false,
           error: parsed.message,
+          playerError: null,
           requiresPremium: parsed.requiresPremium,
+          scopes: [],
         });
       }
     }
@@ -125,51 +159,7 @@ export function useSpotifyBootstrap() {
     bootstrapSpotify();
 
     return () => controller.abort();
-  }, [replacePlaylistsBySource, setSpotifyState]);
-
-  useEffect(() => {
-    const selectedPlaylist = playlists.find((playlist) => playlist.id === selectedPlaylistId);
-
-    if (
-      !selectedPlaylist ||
-      !selectedPlaylist.spotifyId ||
-      selectedPlaylist.tracks.length > 0 ||
-      !spotify.isAuthenticated
-    ) {
-      return;
-    }
-
-    const controller = new AbortController();
-    const playlistId = selectedPlaylist.id;
-    const spotifyPlaylistId = selectedPlaylist.spotifyId;
-
-    async function loadPlaylistTracks() {
-      try {
-        const tracks = await fetchSpotifyPlaylistTracks(
-          spotifyPlaylistId,
-          controller.signal,
-        );
-        if (!controller.signal.aborted) {
-          updatePlaylistTracks(playlistId, tracks);
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          const parsed = parseSpotifyError(error);
-          setSpotifyState({ error: parsed.message });
-        }
-      }
-    }
-
-    loadPlaylistTracks();
-
-    return () => controller.abort();
-  }, [
-    playlists,
-    selectedPlaylistId,
-    setSpotifyState,
-    spotify.isAuthenticated,
-    updatePlaylistTracks,
-  ]);
+  }, [setSpotifyState]);
 
   useEffect(() => {
     if (!spotify.isAuthenticated) {
@@ -178,7 +168,7 @@ export function useSpotifyBootstrap() {
 
     const timer = window.setInterval(() => {
       syncSpotifyPlaybackState();
-    }, 15000);
+    }, 30000);
 
     syncSpotifyPlaybackState();
 

@@ -20,6 +20,7 @@ export function searchTracksWithAgent(
       query: input.query,
       model: input.model ?? appConfig.agent.searchModel,
       limit: input.limit ?? 8,
+      offset: input.offset ?? 0,
       selectedPlaylistId: input.selectedPlaylistId,
       playlistIds: input.playlistIds ?? [],
       queueTrackIds: input.queueTrackIds ?? [],
