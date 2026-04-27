@@ -1,6 +1,7 @@
 package com.quaver.boot.web;
 
 import com.quaver.common.exception.BusinessException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,10 +34,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RestClientResponseException.class)
     public ResponseEntity<Map<String, Object>> handleRestClient(RestClientResponseException exception) {
-        return ResponseEntity.status(exception.getStatusCode()).body(Map.of(
-                "error", exception.getClass().getSimpleName(),
-                "message", resolveRestClientMessage(exception)
-        ));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("error", exception.getClass().getSimpleName());
+        payload.put("message", resolveRestClientMessage(exception));
+
+        Integer retryAfterSeconds = resolveRetryAfterSeconds(exception);
+        if (retryAfterSeconds != null) {
+            payload.put("retryAfterSeconds", retryAfterSeconds);
+        }
+
+        return ResponseEntity.status(exception.getStatusCode()).body(payload);
     }
 
     @ExceptionHandler(Exception.class)
@@ -48,10 +55,34 @@ public class GlobalExceptionHandler {
     }
 
     private String resolveRestClientMessage(RestClientResponseException exception) {
+        if (exception.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
+            Integer retryAfterSeconds = resolveRetryAfterSeconds(exception);
+            return retryAfterSeconds == null
+                    ? "Spotify is rate-limiting requests right now. Please retry in a moment."
+                    : "Spotify is rate-limiting requests right now. Please retry in " + retryAfterSeconds + " seconds.";
+        }
+
         String body = exception.getResponseBodyAsString();
         if (body == null || body.isBlank()) {
             return exception.getMessage() == null ? "Remote service request failed." : exception.getMessage();
         }
         return body.length() > 500 ? body.substring(0, 500) : body;
+    }
+
+    private Integer resolveRetryAfterSeconds(RestClientResponseException exception) {
+        if (exception.getResponseHeaders() == null) {
+            return null;
+        }
+
+        String retryAfter = exception.getResponseHeaders().getFirst("Retry-After");
+        if (retryAfter == null || retryAfter.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Integer.parseInt(retryAfter.trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 }

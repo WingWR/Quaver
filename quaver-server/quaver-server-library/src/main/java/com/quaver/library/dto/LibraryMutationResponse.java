@@ -21,4 +21,6 @@ public class LibraryMutationResponse {
     private PlaybackStateView playback;
 
     private List<PlaylistView> playlists;
+
+    private String selectedPlaylistId;
 }

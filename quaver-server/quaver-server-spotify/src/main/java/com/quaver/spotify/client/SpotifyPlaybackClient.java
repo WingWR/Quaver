@@ -90,7 +90,12 @@ public class SpotifyPlaybackClient {
             Integer offsetPosition,
             Integer positionMs
     ) {
-        PlayBody body = new PlayBody(contextUri, uris, offsetPosition == null ? null : new OffsetBody(offsetPosition), positionMs);
+        PlayBody body = new PlayBody(
+                blankToNull(contextUri),
+                uris == null || uris.isEmpty() ? null : uris,
+                offsetPosition == null ? null : new OffsetBody(offsetPosition),
+                positionMs
+        );
         restClient.put()
                 .uri(withOptionalDevice("/v1/me/player/play", deviceId))
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -286,6 +291,7 @@ public class SpotifyPlaybackClient {
     private record ExternalUrls(String spotify) {
     }
 
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
     private record PlayBody(
             @com.fasterxml.jackson.annotation.JsonProperty("context_uri") String contextUri,
             List<String> uris,

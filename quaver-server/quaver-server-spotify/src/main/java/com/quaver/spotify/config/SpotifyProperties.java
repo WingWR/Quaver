@@ -14,13 +14,16 @@ public class SpotifyProperties {
     private String developerAccount = "";
     private String defaultDeviceId = "";
     private String bridgeRefreshToken = "";
+    private String searchMarket = "US";
     private List<String> scopes = new ArrayList<>(List.of(
             "user-read-private",
             "user-read-email",
             "user-read-playback-state",
             "user-read-currently-playing",
             "user-modify-playback-state",
+            "streaming",
             "playlist-read-private",
+            "playlist-read-collaborative",
             "playlist-modify-private",
             "playlist-modify-public"
     ));
@@ -79,6 +82,14 @@ public class SpotifyProperties {
 
     public void setBridgeRefreshToken(String bridgeRefreshToken) {
         this.bridgeRefreshToken = bridgeRefreshToken;
+    }
+
+    public String getSearchMarket() {
+        return searchMarket;
+    }
+
+    public void setSearchMarket(String searchMarket) {
+        this.searchMarket = searchMarket;
     }
 
     public List<String> getScopes() {

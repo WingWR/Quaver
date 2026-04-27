@@ -69,7 +69,14 @@ public class DefaultSpotifyPlaybackBridgeService implements SpotifyPlaybackBridg
         if ((nextUris.isEmpty() && (contextUri == null || contextUri.isBlank())) && spotifyUri != null && !spotifyUri.isBlank()) {
             nextUris = List.of(spotifyUri);
         }
-        spotifyPlaybackClient.startPlayback(token, resolvedDeviceId, nextUris, contextUri, offsetPosition, positionMs);
+        spotifyPlaybackClient.startPlayback(
+                token,
+                resolvedDeviceId,
+                nextUris.isEmpty() ? null : nextUris,
+                contextUri,
+                offsetPosition,
+                positionMs
+        );
         return getPlaybackStateAfterCommand();
     }
 
@@ -194,6 +201,10 @@ public class DefaultSpotifyPlaybackBridgeService implements SpotifyPlaybackBridg
     }
 
     private String resolveDeviceId(String accessToken, String requestedDeviceId) {
+        if (requestedDeviceId != null && !requestedDeviceId.isBlank()) {
+            return requestedDeviceId;
+        }
+
         List<SpotifyDevice> devices = spotifyPlaybackClient.fetchDevices(accessToken);
 
         return findAvailableDeviceId(devices, requestedDeviceId)

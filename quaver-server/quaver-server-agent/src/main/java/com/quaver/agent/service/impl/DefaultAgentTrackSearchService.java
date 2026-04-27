@@ -42,7 +42,8 @@ public class DefaultAgentTrackSearchService implements AgentTrackSearchService {
     @Override
     public AgentTrackSearchResponse search(AgentTrackSearchRequest request) {
         Instant start = Instant.now(clock);
-        int limit = request.getLimit() == null || request.getLimit() <= 0 ? 8 : request.getLimit();
+        int limit = request.getLimit() == null || request.getLimit() <= 0 ? 8 : Math.min(request.getLimit(), 10);
+        int offset = request.getOffset() == null || request.getOffset() < 0 ? 0 : request.getOffset();
         String rawQuery = request.getQuery() == null ? "" : request.getQuery().trim();
         String searchQuery = resolveSearchQuery(request, rawQuery);
         String model = request.getModel() == null || request.getModel().isBlank()
@@ -51,12 +52,20 @@ public class DefaultAgentTrackSearchService implements AgentTrackSearchService {
 
         Map<String, TrackView> results = new LinkedHashMap<>();
         String warning = null;
+        List<TrackView> spotifyTracks = List.of();
+        boolean hasMore = false;
         if (!searchQuery.isBlank()) {
-            libraryService.searchCachedTracks(searchQuery, limit).forEach(track -> results.put(track.id(), track));
-
             try {
-                libraryService.cacheTracks(spotifyCatalogService.searchTracks(searchQuery, limit))
+                spotifyTracks = libraryService.cacheTracks(spotifyCatalogService.searchTracks(searchQuery, limit, offset));
+                hasMore = spotifyTracks.size() >= limit;
+                spotifyTracks.stream()
+                        .limit(limit)
                         .forEach(track -> results.put(track.id(), track));
+
+                if (offset == 0 && results.size() < limit) {
+                    libraryService.searchCachedTracks(searchQuery, limit).stream()
+                            .forEach(track -> results.putIfAbsent(track.id(), track));
+                }
             } catch (Exception exception) {
                 warning = "Spotify search is unavailable: " + resolveMessage(exception);
             }
@@ -67,7 +76,10 @@ public class DefaultAgentTrackSearchService implements AgentTrackSearchService {
         return new AgentTrackSearchResponse(
                 searchQuery,
                 tracks,
-                tracks.size(),
+                offset + tracks.size() + (hasMore ? 1 : 0),
+                limit,
+                offset,
+                hasMore,
                 model,
                 UUID.randomUUID().toString(),
                 status,

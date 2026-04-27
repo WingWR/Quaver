@@ -8,5 +8,7 @@ public interface SpotifyCatalogService {
 
     List<TrackView> searchTracks(String query, int limit);
 
+    List<TrackView> searchTracks(String query, int limit, int offset);
+
     Optional<TrackView> getTrack(String trackId);
 }

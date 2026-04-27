@@ -15,6 +15,7 @@ import com.quaver.spotify.service.SpotifyLibraryService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientResponseException;
 
 @Service
 public class DefaultSpotifyLibraryService implements SpotifyLibraryService {
@@ -45,9 +46,32 @@ public class DefaultSpotifyLibraryService implements SpotifyLibraryService {
 
     @Override
     public List<TrackView> listPlaylistTracks(String playlistId, int limit) {
-        return spotifyCatalogClient.fetchPlaylistTracks(requireUserAccessToken(), normalizePlaylistId(playlistId), clampLimit(limit, 100)).stream()
-                .map(this::toTrackView)
-                .toList();
+        String normalizedPlaylistId = normalizePlaylistId(playlistId);
+        int safeLimit = clampLimit(limit, 100);
+        try {
+            return spotifyCatalogClient.fetchPlaylistTracks(requireUserAccessToken(), normalizedPlaylistId, safeLimit).stream()
+                    .map(this::toTrackView)
+                    .toList();
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 403) {
+                return fetchPublicPlaylistTracksOrEmpty(normalizedPlaylistId, safeLimit);
+            }
+            throw exception;
+        }
+    }
+
+    private List<TrackView> fetchPublicPlaylistTracksOrEmpty(String playlistId, int limit) {
+        return spotifyAuthService.getCatalogAccessToken()
+                .map(token -> {
+                    try {
+                        return spotifyCatalogClient.fetchPlaylistTracks(token, playlistId, limit).stream()
+                                .map(this::toTrackView)
+                                .toList();
+                    } catch (RestClientResponseException ignored) {
+                        return List.<TrackView>of();
+                    }
+                })
+                .orElseGet(List::of);
     }
 
     private PlaylistView toPlaylistView(SpotifyPlaylistItem item) {

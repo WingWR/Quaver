@@ -40,6 +40,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DefaultLibraryService implements LibraryService {
 
+    private static final List<String> PLAYLIST_ACCENTS = List.of(
+            "#34d399",
+            "#f59e0b",
+            "#38bdf8",
+            "#fb7185",
+            "#a78bfa",
+            "#f97316"
+    );
+
     private final UserContextService userContextService;
     private final TrackMapper trackMapper;
     private final PlaylistMapper playlistMapper;
@@ -97,7 +106,7 @@ public class DefaultLibraryService implements LibraryService {
         PlaybackStateView saved = persistPlaybackState(queue, playbackState.currentTrackIndex(), playbackState.isPlaying(),
                 playbackState.progress(), playbackState.volume(), playbackState.playbackSource(),
                 playbackState.isShuffleEnabled(), playbackState.repeatMode(), null, playbackState);
-        return new LibraryMutationResponse(true, exists ? "Track already in queue." : "Track appended to queue.", saved, null);
+        return new LibraryMutationResponse(true, exists ? "Track already in queue." : "Track appended to queue.", saved, null, null);
     }
 
     @Override
@@ -110,7 +119,7 @@ public class DefaultLibraryService implements LibraryService {
             queue.add(track);
             PlaybackStateView saved = persistPlaybackState(queue, 0, true, 0, playbackState.volume(),
                     PlaybackSource.BACKEND, playbackState.isShuffleEnabled(), playbackState.repeatMode(), null, playbackState);
-            return new LibraryMutationResponse(true, "Track inserted into queue.", saved, null);
+            return new LibraryMutationResponse(true, "Track inserted into queue.", saved, null, null);
         }
 
         queue.removeIf(item -> item.id().equals(track.id()));
@@ -119,17 +128,76 @@ public class DefaultLibraryService implements LibraryService {
         PlaybackStateView saved = persistPlaybackState(queue, playbackState.currentTrackIndex(), playbackState.isPlaying(),
                 playbackState.progress(), playbackState.volume(), playbackState.playbackSource(),
                 playbackState.isShuffleEnabled(), playbackState.repeatMode(), null, playbackState);
-        return new LibraryMutationResponse(true, "Track inserted next.", saved, null);
+        return new LibraryMutationResponse(true, "Track inserted next.", saved, null, null);
+    }
+
+    @Override
+    @Transactional
+    public LibraryMutationResponse createPlaylist(String name, String description) {
+        String userId = userContextService.getCurrentUserId();
+        String normalizedName = (name == null || name.isBlank()) ? "New Playlist" : name.trim();
+        String normalizedDescription = description == null ? "" : description.trim();
+
+        PlaylistEntity playlist = new PlaylistEntity();
+        playlist.setId("playlist-" + UUID.randomUUID());
+        playlist.setUserId(userId);
+        playlist.setName(normalizedName);
+        playlist.setDescription(normalizedDescription);
+        playlist.setCover(null);
+        playlist.setAccent(pickAccent(normalizedName));
+        playlist.setSource(PlaybackSource.BACKEND.getValue());
+        playlist.setSpotifyId(null);
+        playlist.setSpotifyUri(null);
+        playlist.setOwnerName(null);
+        playlist.setVersion(1);
+        playlistMapper.insert(playlist);
+
+        return LibraryMutationResponse.builder()
+                .success(true)
+                .message("Playlist created.")
+                .playback(getPlaybackState())
+                .playlists(listPlaylists())
+                .selectedPlaylistId(playlist.getId())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public LibraryMutationResponse updatePlaylist(String playlistId, String name, String description) {
+        PlaylistEntity playlist = requireOwnedPlaylist(playlistId);
+        playlist.setName((name == null || name.isBlank()) ? playlist.getName() : name.trim());
+        playlist.setDescription(description == null ? "" : description.trim());
+        playlistMapper.updateById(playlist);
+
+        return LibraryMutationResponse.builder()
+                .success(true)
+                .message("Playlist updated.")
+                .playback(getPlaybackState())
+                .playlists(listPlaylists())
+                .selectedPlaylistId(playlistId)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public LibraryMutationResponse deletePlaylist(String playlistId) {
+        requireOwnedPlaylist(playlistId);
+        playlistMapper.deleteById(playlistId);
+
+        List<PlaylistView> playlists = listPlaylists();
+        return LibraryMutationResponse.builder()
+                .success(true)
+                .message("Playlist deleted.")
+                .playback(getPlaybackState())
+                .playlists(playlists)
+                .selectedPlaylistId(playlists.isEmpty() ? null : playlists.getFirst().id())
+                .build();
     }
 
     @Override
     @Transactional
     public LibraryMutationResponse addTrackToPlaylist(String playlistId, String trackId) {
-        String userId = userContextService.getCurrentUserId();
-        PlaylistEntity playlistEntity = playlistMapper.selectById(playlistId);
-        if (playlistEntity == null || !Objects.equals(userId, playlistEntity.getUserId())) {
-            throw new NotFoundException("Playlist does not exist.");
-        }
+        requireOwnedPlaylist(playlistId);
 
         TrackView track = resolveTrack(trackId);
         PlaylistTrackEntity existingRelation = playlistTrackMapper.selectOne(Wrappers.lambdaQuery(PlaylistTrackEntity.class)
@@ -153,7 +221,13 @@ public class DefaultLibraryService implements LibraryService {
             playlistTrackMapper.insert(relation);
         }
 
-        return new LibraryMutationResponse(true, "Track saved to playlist.", getPlaybackState(), listPlaylists());
+        return LibraryMutationResponse.builder()
+                .success(true)
+                .message("Track saved to playlist.")
+                .playback(getPlaybackState())
+                .playlists(listPlaylists())
+                .selectedPlaylistId(playlistId)
+                .build();
     }
 
     @Override
@@ -290,7 +364,7 @@ public class DefaultLibraryService implements LibraryService {
                         playlist.getId(),
                         playlist.getName(),
                         playlist.getDescription(),
-                        playlist.getCover(),
+                        derivePlaylistCover(playlist, playlistTracks.getOrDefault(playlist.getId(), List.of())),
                         playlist.getAccent(),
                         playlistTracks.getOrDefault(playlist.getId(), List.of()),
                         PlaybackSource.fromValue(playlist.getSource()),
@@ -473,5 +547,26 @@ public class DefaultLibraryService implements LibraryService {
 
     private boolean containsIgnoreCase(String value, String query) {
         return value != null && value.toLowerCase().contains(query);
+    }
+
+    private String pickAccent(String seed) {
+        int hash = Math.abs(Objects.requireNonNullElse(seed, "quaver").hashCode());
+        return PLAYLIST_ACCENTS.get(hash % PLAYLIST_ACCENTS.size());
+    }
+
+    private PlaylistEntity requireOwnedPlaylist(String playlistId) {
+        String userId = userContextService.getCurrentUserId();
+        PlaylistEntity playlistEntity = playlistMapper.selectById(playlistId);
+        if (playlistEntity == null || !Objects.equals(userId, playlistEntity.getUserId())) {
+            throw new NotFoundException("Playlist does not exist.");
+        }
+        return playlistEntity;
+    }
+
+    private String derivePlaylistCover(PlaylistEntity playlist, List<TrackView> tracks) {
+        if (tracks != null && !tracks.isEmpty() && tracks.getFirst().artwork() != null && !tracks.getFirst().artwork().isBlank()) {
+            return tracks.getFirst().artwork();
+        }
+        return playlist.getCover();
     }
 }
