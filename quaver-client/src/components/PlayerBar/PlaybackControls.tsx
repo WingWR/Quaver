@@ -174,7 +174,7 @@ export default function PlaybackControls({
             type="range"
             min={0}
             max={Math.max(duration, 1)}
-            step={1}
+            step={0.1}
             value={Math.min(progress, duration || 0)}
             onChange={(event) => onSeek(Number(event.target.value))}
             disabled={!hasTrack}

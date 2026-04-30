@@ -2,12 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_BACKEND_BASE_URL?: string;
-  readonly VITE_BACKEND_API_KEY?: string;
   readonly VITE_BACKEND_TIMEOUT_MS?: string;
-  readonly VITE_AGENT_MODEL?: string;
-  readonly VITE_AGENT_CHAT_MODEL?: string;
-  readonly VITE_AGENT_SEARCH_MODEL?: string;
-  readonly VITE_AGENT_API_KEY?: string;
   readonly VITE_AGENT_DEFAULT_CONVERSATION_TITLE?: string;
   readonly VITE_SPOTIFY_DEVELOPER_ACCOUNT?: string;
 }
@@ -28,6 +23,37 @@ namespace Spotify {
     device_id: string;
   }
 
+  interface WebPlaybackImage {
+    url: string;
+  }
+
+  interface WebPlaybackArtist {
+    name: string;
+  }
+
+  interface WebPlaybackAlbum {
+    name?: string;
+    images?: WebPlaybackImage[];
+  }
+
+  interface WebPlaybackTrack {
+    id?: string;
+    uri?: string;
+    name?: string;
+    duration_ms?: number;
+    album?: WebPlaybackAlbum;
+    artists?: WebPlaybackArtist[];
+  }
+
+  interface WebPlaybackState {
+    paused: boolean;
+    position: number;
+    duration: number;
+    track_window: {
+      current_track?: WebPlaybackTrack;
+    };
+  }
+
   interface WebPlaybackError {
     message: string;
   }
@@ -42,7 +68,7 @@ namespace Spotify {
     });
 
     addListener(event: "ready" | "not_ready", listener: (player: WebPlaybackPlayer) => void): boolean;
-    addListener(event: "player_state_changed", listener: (state: unknown) => void): boolean;
+    addListener(event: "player_state_changed", listener: (state: WebPlaybackState | null) => void): boolean;
     addListener(
       event: "initialization_error" | "authentication_error" | "account_error" | "playback_error",
       listener: ErrorListener,
