@@ -3,6 +3,7 @@ import { formatBackendError } from "../api/http";
 import { fetchSpotifyPlayerToken } from "../features/spotify/api/client";
 import type { SpotifyPlayerToken } from "../features/spotify/api/types";
 import { useQuaverStore } from "../store/useQuaverStore";
+import type { Track } from "../types/music";
 
 const SPOTIFY_SDK_URL = "https://sdk.scdn.co/spotify-player.js";
 const SPOTIFY_STREAMING_SCOPE = "streaming";
@@ -70,6 +71,7 @@ function asPlaybackErrorMessage(error: Spotify.WebPlaybackError) {
 export function useSpotifyWebPlaybackSdk() {
   const spotify = useQuaverStore((state) => state.spotify);
   const volume = useQuaverStore((state) => state.volume);
+  const syncPlayback = useQuaverStore((state) => state.syncPlayback);
   const setSpotifyState = useQuaverStore((state) => state.setSpotifyState);
   const cachedTokenRef = useRef<SpotifyPlayerToken | null>(null);
   const scopesKey = useMemo(() => spotify.scopes.join(" "), [spotify.scopes]);
@@ -121,6 +123,62 @@ export function useSpotifyWebPlaybackSdk() {
       setSpotifyState({
         playerReady: false,
         playerError: asPlaybackErrorMessage(error),
+      });
+    }
+
+    function sameSpotifyTrack(track: Spotify.WebPlaybackTrack, candidate: Track) {
+      return Boolean(
+        (track.uri && candidate.spotifyUri === track.uri) ||
+          (track.id && (candidate.spotifyId === track.id || candidate.id === `spotify-track-${track.id}`)),
+      );
+    }
+
+    function trackFromSpotifyState(track: Spotify.WebPlaybackTrack): Track {
+      const fallbackId = track.id ?? track.uri ?? "unknown";
+      return {
+        id: track.id ? `spotify-track-${track.id}` : `spotify-track-${fallbackId}`,
+        title: track.name ?? "Spotify track",
+        artist: track.artists?.map((artist) => artist.name).filter(Boolean).join(", ") ?? "Spotify",
+        album: track.album?.name ?? "Spotify",
+        duration: Math.round((track.duration_ms ?? 0) / 1000),
+        artwork: track.album?.images?.[0]?.url ?? "",
+        accent: "#1db954",
+        mood: "",
+        genres: [],
+        source: "spotify",
+        spotifyId: track.id,
+        spotifyUri: track.uri,
+        spotifyUrl: track.id ? `https://open.spotify.com/track/${track.id}` : undefined,
+        lyrics: [],
+      };
+    }
+
+    function syncSdkPlaybackState(state: Spotify.WebPlaybackState | null) {
+      if (!isMounted || !state) {
+        return;
+      }
+
+      const sdkTrack = state.track_window.current_track;
+      const currentState = useQuaverStore.getState();
+      const existingIndex = sdkTrack
+        ? currentState.queue.findIndex((track) => sameSpotifyTrack(sdkTrack, track))
+        : -1;
+      const queue =
+        existingIndex >= 0
+          ? currentState.queue
+          : sdkTrack
+            ? [trackFromSpotifyState(sdkTrack)]
+            : currentState.queue;
+
+      syncPlayback({
+        queue,
+        currentTrackIndex: existingIndex >= 0 ? existingIndex : 0,
+        isPlaying: !state.paused,
+        progress: Math.round(state.position / 1000),
+        volume: currentState.volume,
+        playbackSource: "spotify",
+        isShuffleEnabled: currentState.isShuffleEnabled,
+        repeatMode: currentState.repeatMode,
       });
     }
 
@@ -182,6 +240,7 @@ export function useSpotifyWebPlaybackSdk() {
             playerError: "Spotify browser player is not ready yet.",
           });
         });
+        player.addListener("player_state_changed", syncSdkPlaybackState);
         player.addListener("initialization_error", handleSdkError);
         player.addListener("authentication_error", handleSdkError);
         player.addListener("playback_error", handleSdkError);
@@ -254,7 +313,7 @@ export function useSpotifyWebPlaybackSdk() {
         playerReady: false,
       });
     };
-  }, [hasStreamingScope, scopesKey, setSpotifyState, spotify.isAuthenticated]);
+  }, [hasStreamingScope, scopesKey, setSpotifyState, spotify.isAuthenticated, syncPlayback]);
 
   useEffect(() => {
     if (!spotify.playerReady || !activePlayer) {

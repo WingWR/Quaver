@@ -41,6 +41,23 @@ function buildQuaverUserHeaders() {
   };
 }
 
+export function buildBackendRequestHeaders({
+  accept = "application/json",
+  hasBody = false,
+  headers,
+}: {
+  accept?: string;
+  hasBody?: boolean;
+  headers?: Record<string, string>;
+} = {}) {
+  return {
+    Accept: accept,
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(buildQuaverUserHeaders() ?? {}),
+    ...(headers ?? {}),
+  };
+}
+
 async function parseResponseBody(response: Response) {
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -90,13 +107,10 @@ export async function backendRequest<T>(path: string, init: RequestInit = {}) {
     const response = await fetch(resolveBackendUrl(path), {
       ...rest,
       signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        ...(rest.body ? { "Content-Type": "application/json" } : {}),
-        ...(appConfig.backend.apiKey ? { "x-api-key": appConfig.backend.apiKey } : {}),
-        ...(buildQuaverUserHeaders() ?? {}),
-        ...(headers ?? {}),
-      },
+      headers: buildBackendRequestHeaders({
+        hasBody: Boolean(rest.body),
+        headers: headers as Record<string, string> | undefined,
+      }),
     });
 
     if (response.status === 204) {
