@@ -12,18 +12,21 @@ Spring Boot backend for Quaver, organized as a parent-child Maven project.
 
 ## Configuration
 
-Main runtime config lives in:
+Main runtime structure lives in:
 
 - `quaver-server-boot/src/main/resources/application.yml`
 
-The backend uses `application.yml` directly.
+Local private values live in ignored env files:
+
+- `quaver-server/.env`
+- `quaver-server/.env.example` as the safe template
 
 Supported config areas:
 
 - frontend origin / CORS
 - backend API key
 - agent API key
-- AI base URL, API key, search model, and agent model
+- DeepSeek API key
 - MySQL datasource
 - Redis connection
 - Spotify developer account and bridge credentials
@@ -38,7 +41,7 @@ The first bridge authorization must be completed once in the browser because
 Spotify user playback and private library APIs require account consent. After
 that, Quaver stores the refresh token in `qv_spotify_authorization` and refreshes
 access tokens on the backend automatically. If you already have a Spotify
-refresh token, put it in `quaver.spotify.bridge-refresh-token` and the backend
+refresh token, put it in `QUAVER_SPOTIFY_BRIDGE_REFRESH_TOKEN` and the backend
 will connect from that token without opening the browser.
 
 ## Build
@@ -84,7 +87,7 @@ is created only when Spotify is open on desktop, mobile, or the Spotify Web
 Player. Quaver will choose a device automatically in this order:
 
 - request `deviceId`
-- `quaver.spotify.default-device-id`
+- `QUAVER_SPOTIFY_DEFAULT_DEVICE_ID`
 - active Spotify Connect device
 - first unrestricted Spotify Connect device
 
@@ -95,12 +98,10 @@ want to use, call:
 GET http://127.0.0.1:8080/api/spotify/playback/devices
 ```
 
-Copy the device `id` into:
+Copy the device `id` into `quaver-server/.env`:
 
-```yaml
-quaver:
-  spotify:
-    default-device-id: your-device-id
+```properties
+QUAVER_SPOTIFY_DEFAULT_DEVICE_ID=your-device-id
 ```
 
 ## Boot Entry

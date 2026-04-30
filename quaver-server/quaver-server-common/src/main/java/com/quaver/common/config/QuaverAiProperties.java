@@ -6,10 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class QuaverAiProperties {
 
     private String apiKey = "";
-    private String model = "gpt-4.1-mini";
-    private String searchModel = "gpt-4.1-mini";
-    private String agentModel = "gpt-5";
-    private String baseUrl = "https://api.openai.com/v1";
+    private String model = "deepseek-v4-pro";
+    private String searchModel = "deepseek-v4-pro";
+    private String agentModel = "deepseek-v4-pro";
+    private String baseUrl = "https://api.deepseek.com";
 
     public String getApiKey() {
         return apiKey;
