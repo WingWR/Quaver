@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { formatBackendError, getBackendRetryAfterSeconds, isBackendRateLimitError } from "../api/http";
 import {
   addTrackToBackendPlaylist,
@@ -47,6 +48,8 @@ export function usePlaybackControllerRuntime() {
   const isShuffleEnabled = useQuaverStore((state) => state.isShuffleEnabled);
   const repeatMode = useQuaverStore((state) => state.repeatMode);
   const pushNotice = useUiStore((state) => state.pushNotice);
+  const seekSequenceRef = useRef(0);
+  const seekDebounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   function getQueueIndex(track: Track) {
     return queue.findIndex(
@@ -271,19 +274,45 @@ export function usePlaybackControllerRuntime() {
     }
   }
 
-  async function seek(progress: number) {
-    setProgress(progress);
+  function seek(nextProgress: number) {
+    const requestId = seekSequenceRef.current + 1;
+    seekSequenceRef.current = requestId;
+    setProgress(nextProgress);
 
-    if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
-      await syncBackendPlaybackSnapshot("playback-seek");
-      return;
+    if (seekDebounceRef.current) {
+      window.clearTimeout(seekDebounceRef.current);
     }
 
-    try {
-      syncSpotifyPlaybackResponse(await seekSpotifyPlayback(progress * 1000, spotifyDeviceId()));
-    } catch (error) {
-      warnSpotifyPlayback(error, "spotify-seek");
-    }
+    seekDebounceRef.current = window.setTimeout(async () => {
+      const shouldSyncSpotify = playbackSource === "spotify" && spotify.isAuthenticated;
+      if (!shouldSyncSpotify) {
+        try {
+          const response = await updateBackendPlaybackState({
+            ...currentBackendPlaybackSnapshot(),
+            progress: nextProgress,
+          });
+          if (requestId === seekSequenceRef.current && response.playback) {
+            syncPlayback(response.playback);
+          }
+        } catch (error) {
+          if (requestId === seekSequenceRef.current) {
+            warnPlaybackSync(error, "playback-seek");
+          }
+        }
+        return;
+      }
+
+      try {
+        const playback = await seekSpotifyPlayback(Math.round(nextProgress * 1000), spotifyDeviceId());
+        if (requestId === seekSequenceRef.current) {
+          syncSpotifyPlaybackResponse(playback);
+        }
+      } catch (error) {
+        if (requestId === seekSequenceRef.current) {
+          warnSpotifyPlayback(error, "spotify-seek");
+        }
+      }
+    }, 180);
   }
 
   async function updateVolume(volume: number) {

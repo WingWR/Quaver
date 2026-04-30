@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import TrackSearchBar from "../../features/search/components/TrackSearchBar";
 import { usePlaybackControllerRuntime } from "../../hooks/usePlaybackControllerRuntime";
 import { useQuaverStore } from "../../store/useQuaverStore";
@@ -29,25 +29,60 @@ export default function PlayerBar() {
     cycleRepeatMode,
   } = usePlaybackControllerRuntime();
   const accentColor = currentTrack?.accent ?? "#34d399";
+  const [displayProgress, setDisplayProgress] = useState(progress);
+  const progressClockRef = useRef({
+    baseProgress: 0,
+    startedAt: 0,
+    committedSecond: 0,
+    endHandled: false,
+  });
 
   useEffect(() => {
-    if (!isPlaying || !currentTrack || playbackSource !== "backend") {
+    const clampedProgress = Math.min(Math.max(progress, 0), currentTrack?.duration ?? 0);
+    progressClockRef.current = {
+      baseProgress: clampedProgress,
+      startedAt: performance.now(),
+      committedSecond: Math.floor(clampedProgress),
+      endHandled: false,
+    };
+    setDisplayProgress(clampedProgress);
+  }, [currentTrack?.duration, currentTrack?.id, progress]);
+
+  useEffect(() => {
+    if (!isPlaying || !currentTrack) {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      const nextProgress = progress + 1;
+    let frameId = 0;
 
-      if (nextProgress >= currentTrack.duration) {
-        playNext();
+    function tick() {
+      const clock = progressClockRef.current;
+      const duration = currentTrack?.duration ?? 0;
+      const elapsedSeconds = (performance.now() - clock.startedAt) / 1000;
+      const nextProgress = Math.min(duration, clock.baseProgress + elapsedSeconds);
+      const nextSecond = Math.floor(nextProgress);
+
+      setDisplayProgress(nextProgress);
+
+      if (nextSecond !== clock.committedSecond) {
+        clock.committedSecond = nextSecond;
+        setProgress(nextSecond);
+      }
+
+      if (duration > 0 && nextProgress >= duration) {
+        if (playbackSource === "backend" && !clock.endHandled) {
+          clock.endHandled = true;
+          void playNext();
+        }
         return;
       }
 
-      setProgress(nextProgress);
-    }, 1000);
+      frameId = window.requestAnimationFrame(tick);
+    }
 
-    return () => window.clearInterval(timer);
-  }, [currentTrack, isPlaying, playbackSource, playNext, progress, setProgress]);
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [currentTrack, isPlaying, playbackSource, playNext, setProgress]);
 
   return (
     <motion.footer
@@ -79,9 +114,12 @@ export default function PlayerBar() {
         <div className="flex min-w-0 justify-center lg:flex-[1.35]">
           <PlaybackControls
             track={currentTrack}
-            progress={progress}
+            progress={displayProgress}
             isPlaying={isPlaying}
-            onSeek={(value) => void seek(value)}
+            onSeek={(value) => {
+              setDisplayProgress(value);
+              void seek(value);
+            }}
             onTogglePlayback={() => void togglePlayback()}
             onPlayNext={() => void playNext()}
             onPlayPrevious={() => void playPrevious()}

@@ -1,9 +1,11 @@
+import type { LibraryMutationResponse } from "../../library/api/types";
+
 export type AgentMessageRole = "system" | "user" | "assistant";
 export type AgentItemStatus = "pending" | "running" | "completed" | "failed";
 
 export interface AgentOperation {
   id: string;
-  type: "tool_call" | "status" | "decision" | "system";
+  type: "tool_call" | "status" | "decision" | "system" | "agent_request" | "agent_response";
   title: string;
   detail?: string;
   status: AgentItemStatus;
@@ -36,6 +38,16 @@ export interface AgentConversationPayload {
   messages: AgentMessage[];
 }
 
+export interface AgentRuntimeStatus {
+  aiKeyConfigured: boolean;
+  aiModel: string;
+  aiSearchModel: string;
+  aiAgentModel: string;
+  aiBaseUrl: string;
+  spotifyBridgeEnabled: boolean;
+  spotifyBridgeAuthorized: boolean;
+}
+
 export interface CreateAgentConversationRequest {
   title?: string;
   model?: string;
@@ -55,4 +67,23 @@ export interface SendAgentMessageResponse {
   userMessage?: AgentMessage;
   assistantMessage?: AgentMessage;
   messages?: AgentMessage[];
+  libraryMutation?: LibraryMutationResponse;
+}
+
+export type AgentStreamEventType =
+  | "user_message"
+  | "operation"
+  | "assistant_message_start"
+  | "assistant_delta"
+  | "assistant_message_done"
+  | "final"
+  | "error";
+
+export interface AgentStreamEvent {
+  type: AgentStreamEventType;
+  delta?: string;
+  message?: AgentMessage;
+  operation?: AgentOperation;
+  response?: SendAgentMessageResponse;
+  error?: string;
 }

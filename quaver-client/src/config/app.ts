@@ -10,20 +10,12 @@ function readNumber(value: string | undefined, fallback: number) {
 export const appConfig = {
   backend: {
     baseUrl: readString(import.meta.env.VITE_BACKEND_BASE_URL, "/api"),
-    apiKey: readString(import.meta.env.VITE_BACKEND_API_KEY),
     timeoutMs: readNumber(import.meta.env.VITE_BACKEND_TIMEOUT_MS, 12_000),
   },
   agent: {
-    model: readString(
-      import.meta.env.VITE_AGENT_CHAT_MODEL ?? import.meta.env.VITE_AGENT_MODEL,
-      "gpt-5",
-    ),
-    chatModel: readString(
-      import.meta.env.VITE_AGENT_CHAT_MODEL ?? import.meta.env.VITE_AGENT_MODEL,
-      "gpt-5",
-    ),
-    searchModel: readString(import.meta.env.VITE_AGENT_SEARCH_MODEL, "gpt-4.1-mini"),
-    apiKey: readString(import.meta.env.VITE_AGENT_API_KEY),
+    model: "deepseek-v4-pro",
+    chatModel: "deepseek-v4-pro",
+    searchModel: "deepseek-v4-pro",
     defaultConversationTitle: readString(
       import.meta.env.VITE_AGENT_DEFAULT_CONVERSATION_TITLE,
       "Quaver Agent Session",

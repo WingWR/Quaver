@@ -72,14 +72,19 @@ export default function AgentWorkspacePanel() {
   const isAgentWorkspace = useQuaverStore((state) => state.workspaceView === "agent");
   const {
     messages,
+    operations,
+    runtimeStatus,
     draft,
     setDraft,
     status,
     helperMessage,
     canSend,
     submitDraft,
+    model,
   } = useAgentConversationRuntime(isAgentWorkspace);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
+  const isStreaming = status === "submitting";
+  const isAiReady = runtimeStatus?.aiKeyConfigured ?? false;
 
   useEffect(() => {
     const viewport = messageViewportRef.current;
@@ -96,6 +101,56 @@ export default function AgentWorkspacePanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-white/[0.06] bg-black/20">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.05] px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  isStreaming
+                    ? "agent-ready-dot bg-cyan-300"
+                    : isAiReady
+                      ? "bg-emerald-300"
+                      : "bg-amber-300"
+                }`}
+              />
+              <h2 className="text-base font-semibold text-white">Agent</h2>
+            </div>
+            <p className="mt-1 truncate text-xs text-brand-grey">
+              DeepSeek {runtimeStatus?.aiAgentModel ?? model} ·{" "}
+              {isAiReady ? "API connected" : "Waiting for API key"}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {["创建歌单 夜跑", "把七里香加入歌单 夜跑", "下一首播放 稻香"].map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => setDraft(prompt)}
+                className="rounded-full bg-white/[0.05] px-3 py-1.5 text-xs text-white/72 transition hover:bg-white/[0.09] hover:text-white"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {operations.length ? (
+          <div className="border-b border-white/[0.05] px-5 py-3">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {operations.map((operation) => (
+                <div
+                  key={operation.id}
+                  className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-white/72"
+                  title={operation.detail}
+                >
+                  {operation.title}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div
           ref={messageViewportRef}
           className="scrollbar-brand flex-1 space-y-4 overflow-y-auto px-5 py-5"
@@ -124,7 +179,7 @@ export default function AgentWorkspacePanel() {
                           message.role === "user" ? "text-black/88" : "text-white/88"
                         }`}
                       >
-                        {message.content}
+                        {message.content || (message.status === "running" ? "..." : "")}
                       </p>
                     </div>
 

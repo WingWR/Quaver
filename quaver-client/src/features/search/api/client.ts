@@ -11,11 +11,6 @@ export function searchTracksWithAgent(
   return backendRequest<AgentTrackSearchResponse>(`${SEARCH_BASE_PATH}/tracks`, {
     method: "POST",
     signal,
-    headers: appConfig.agent.apiKey
-      ? {
-          "x-agent-api-key": appConfig.agent.apiKey,
-        }
-      : undefined,
     body: JSON.stringify({
       query: input.query,
       model: input.model ?? appConfig.agent.searchModel,
