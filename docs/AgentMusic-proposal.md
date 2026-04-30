@@ -71,7 +71,7 @@ Semantic Kernel Java SDK 已进入正式版（2025 年已成熟）
     ```
     - 运行mvn install构建；
       - 在主类中初始化Kernel：`Kernel kernel = Kernel.builder().build()`；
-      - 添加OpenAI服务：`kernel.addChatCompletionService(new OpenAIChatCompletion.Builder().withApiKey("YOUR_OPENAI_KEY").build())`。
+      - 添加DeepSeek服务：`kernel.addChatCompletionService(new DeepSeekChatCompletion.Builder().withApiKey("YOUR_DEEPSEEK_API_KEY").build())`。
   - 使用 Spring WebFlux + Semantic Kernel Java 构建 Agent
     - `npm install spring-boot-starter-webflux`依赖；
     - 在Controller中暴露API端点，集成Planner。
@@ -88,7 +88,7 @@ Semantic Kernel Java SDK 已进入正式版（2025 年已成熟）
     - 安装Semantic Kernel：`pip install semantic-kernel`；
     - 初始化Kernel：`import semantic_kernel as sk; kernel = sk.Kernel()`；
     - 添加服务：
-      - `from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion`； `kernel.add_service(OpenAIChatCompletion("gpt-4", api_key="YOUR_OPENAI_KEY"))`；
+      - `from semantic_kernel.connectors.ai.deepseek import DeepSeekChatCompletion`； `kernel.add_service(DeepSeekChatCompletion("deepseek-v4-pro", api_key="YOUR_DEEPSEEK_API_KEY"))`；
     - 运行uvicorn main:`app --reload`启动服务器。
 
 
@@ -101,7 +101,7 @@ Semantic Kernel Java SDK 已进入正式版（2025 年已成熟）
     - 使用`await memory.saveInformationAsync()`
   
 ps. **Planner**：
-**Planner**是**Semantic Kernel**中的一个组件，它允许AI根据用户自然语言请求（goal），自动生成并执行一个“计划”（plan）——即函数调用的序列，而无需开发者手动编码每个步骤。书将Planner比作“智能调度器”，它使用底层LLM（如GPT模型）分析目标，决定调用哪些插件/函数（semantic或native），并处理条件/循环。
+**Planner**是**Semantic Kernel**中的一个组件，它允许AI根据用户自然语言请求（goal），自动生成并执行一个“计划”（plan）——即函数调用的序列，而无需开发者手动编码每个步骤。书将Planner比作“智能调度器”，它使用底层LLM（如DeepSeek模型）分析目标，决定调用哪些插件/函数（semantic或native），并处理条件/循环。
 **也就是说**，在下载了**Semantic Kernel**之后，就可以直接使用**Planner**这个**组件**了。
 
 **Java示例**
@@ -119,5 +119,5 @@ from semantic_kernel.planners import FunctionCallingStepwisePlanner, FunctionCal
 
 # 假设kernel已创建并添加插件
 planner_options = FunctionCallingStepwisePlannerOptions(max_tokens=4000, max_iterations=10)  # 可调参数：令牌限、迭代限
-planner = FunctionCallingStepwisePlanner(service_id="gpt-4", options=planner_options)  # 指定LLM服务
+planner = FunctionCallingStepwisePlanner(service_id="deepseek-v4-pro", options=planner_options)  # 指定LLM服务
 ```

@@ -71,7 +71,7 @@ AgentMusic 是一个 Web 端 AI 增强音乐软件，核心目标是打造一个
 
 #### 约束
 1. 性能约束：歌单加载（1000 首以内）< 800ms
-2. 成本约束：OpenAI 调用可先使用免费apiKey
+2. 成本约束：DeepSeek 调用可先使用免费apiKey
 3. 账号约束：开发者暂未开通 Spotify Premium 用户，可先通过 30 秒预览收听歌曲验证功能
 4. 合规约束：遵守 Spotify API 使用条款，不存储完整音频
 

@@ -77,10 +77,10 @@ https://start.spring.io
             <artifactId>semantickernel-agents-core</artifactId>
         </dependency>
 
-        <!-- OpenAI 连接器（正确名称！） -->
+        <!-- DeepSeek 连接器（正确名称！） -->
         <dependency>
             <groupId>com.microsoft.semantic-kernel</groupId>
-            <artifactId>semantickernel-aiservices-openai</artifactId>
+            <artifactId>semantickernel-aiservices-deepseek</artifactId>
         </dependency>
     </dependencies>
    ```
@@ -99,11 +99,11 @@ https://start.spring.io
     ```java
     package com.agentmusic.config;
 
-    import com.azure.ai.openai.OpenAIAsyncClient;
-    import com.azure.ai.openai.OpenAIClientBuilder;
+    import com.azure.ai.deepseek.DeepSeekAsyncClient;
+    import com.azure.ai.deepseek.DeepSeekClientBuilder;
     import com.azure.core.credential.KeyCredential;
     import com.microsoft.semantickernel.Kernel;
-    import com.microsoft.semantickernel.aiservices.openai.chatcompletion.OpenAIChatCompletion;
+    import com.microsoft.semantickernel.aiservices.deepseek.chatcompletion.DeepSeekChatCompletion;
     import org.springframework.beans.factory.annotation.Value;
     import org.springframework.context.annotation.Bean;
     import org.springframework.context.annotation.Configuration;
@@ -111,33 +111,33 @@ https://start.spring.io
     @Configuration
     public class SemanticKernelConfig {
 
-        @Value("${openai.api.key}")
+        @Value("${deepseek.api.key}")
         private String openAiApiKey;
 
         @Bean
         public Kernel kernel() {
 
-            OpenAIAsyncClient client = new OpenAIClientBuilder()
+            DeepSeekAsyncClient client = new DeepSeekClientBuilder()
                     .credential(new KeyCredential(openAiApiKey))
-                    .endpoint("https://api.openai.com")
+                    .endpoint("https://api.deepseek.com")
                     .buildAsyncClient();
 
-            OpenAIChatCompletion chatCompletion =
-                    OpenAIChatCompletion.builder()
-                            .withModelId("gpt-4o")
-                            .withOpenAIAsyncClient(client)
+            DeepSeekChatCompletion chatCompletion =
+                    DeepSeekChatCompletion.builder()
+                            .withModelId("deepseek-v4-pro")
+                            .withDeepSeekAsyncClient(client)
                             .build();
 
             return Kernel.builder()
-                    .withAIService(OpenAIChatCompletion.class, chatCompletion)
+                    .withAIService(DeepSeekChatCompletion.class, chatCompletion)
                     .build();
         }
     }
     ```
 
-    同时在 `src/main/resources/application.properties` 中添加 openai.api.key 配置。
+    同时在 `src/main/resources/application.properties` 中添加 deepseek.api.key 配置。
     ```properties
-    openai.api.key=your-api-key-here
+    deepseek.api.key=your-api-key-here
     ```
 
 ## 当前后端整理进度
@@ -170,7 +170,7 @@ src/main/java/com/agentmusic/agentmusic_backend/config
 
 ### API Key 安全配置调整
 
-原先项目将 `openai.api.key` 直接写在：
+原先项目将 `deepseek.api.key` 直接写在：
 
 ```text
 src/main/resources/application.properties
@@ -180,8 +180,8 @@ src/main/resources/application.properties
 
 1. `application.properties` 只保留安全占位配置
 2. 支持通过环境变量读取：
-   - `OPENAI_API_KEY`
-   - `OPENAI_MODEL`
+   - `DEEPSEEK_API_KEY`
+   - `DEEPSEEK_MODEL`
 3. 支持通过项目根目录的本地文件读取：
    - `application-local.properties`
 4. 新增示例文件：
@@ -193,7 +193,7 @@ src/main/resources/application.properties
 当前推荐的本地配置方式：
 
 ```properties
-openai.api.key=your-openai-api-key
+deepseek.api.key=your-deepseek-api-key
 ```
 
 将其写入项目根目录的 `application-local.properties`，不要提交到仓库。
@@ -201,11 +201,11 @@ openai.api.key=your-openai-api-key
 如果使用环境变量，则可直接设置：
 
 ```bash
-OPENAI_API_KEY=your-openai-api-key
-OPENAI_MODEL=gpt-4o
+DEEPSEEK_API_KEY=your-deepseek-api-key
+DEEPSEEK_MODEL=deepseek-v4-pro
 ```
 
-当前 `Kernel` Bean 仅会在检测到 `openai.api.key` 已实际提供时创建，避免因为空配置导致应用启动时报错。
+当前 `Kernel` Bean 仅会在检测到 `deepseek.api.key` 已实际提供时创建，避免因为空配置导致应用启动时报错。
 
 ### Maven 本地构建隔离
 
@@ -812,14 +812,14 @@ build success
 - 默认情况下：
   - 仍然走本地硬编码 / planner skeleton 逻辑
 - 手动开启 `agent.chat.live-llm-enabled=true` 时：
-  - `CHAT_ONLY / UNKNOWN` 会尝试请求 OpenAI Chat Completions
+  - `CHAT_ONLY / UNKNOWN` 会尝试请求 DeepSeek Chat Completions
   - 失败时回退到本地提示文案
 
 ### 验证情况
 
 - 前端 `npm run build` 通过
 - 后端 `mvn test` 通过
-- 由于当前本机到 `api.openai.com:443` 的直连请求被网络层阻断，未能在本轮内完成实时在线验证
+- 由于当前本机到 `api.deepseek.com:443` 的直连请求被网络层阻断，未能在本轮内完成实时在线验证
 - 代码路径已接好，后续可在本地重启 Spring Boot 后，临时开启配置打一条聊天请求进行验证
 
 ## 2026-03-26 Sidebar playlist integration
@@ -932,22 +932,22 @@ build success
   - `openAiModelId`
   - `liveLlmAvailable`
 
-这样可以直接判断当前运行实例是否真正读取到了 live LLM 配置和 OpenAI key。
+这样可以直接判断当前运行实例是否真正读取到了 live LLM 配置和 DeepSeek key。
 
-### OpenAI key 显式环境变量通道
+### DeepSeek key 显式环境变量通道
 
 根据运行时诊断结果：
 
 - `liveLlmEnabledConfigured=true`
 - `openAiKeyPresent=false`
 
-说明运行实例已经读到 live LLM 开关，但没有成功读到 `openai.api.key`。
+说明运行实例已经读到 live LLM 开关，但没有成功读到 `deepseek.api.key`。
 
 为避免继续依赖本地文件导入路径，本轮补充：
 
-- `openai.api.key=${OPENAI_API_KEY:}`
+- `deepseek.api.key=${DEEPSEEK_API_KEY:}`
 
-这样可以直接通过环境变量 `OPENAI_API_KEY` 为后端提供 key。
+这样可以直接通过环境变量 `DEEPSEEK_API_KEY` 为后端提供 key。
 
 ## 2026-04-02 SRS document baseline
 

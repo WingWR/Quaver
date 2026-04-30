@@ -5,30 +5,35 @@
 ## 当前状态
 
 - 前端已接入后端的歌单读取、队列、播放会话、搜索和 Agent 会话接口。
-- 后端已实现默认用户、空歌单状态、曲目缓存、歌单添加、队列持久化、播放会话持久化、Spotify 授权/搜索/播放桥接。
-- Spotify OAuth、token 刷新和 Web API 调用由后端处理；前端只触发连接、读取后端状态并展示结果。
-- Spotify 曲库搜索可直接使用应用 Client ID/Secret 获取 catalog token；真实播放控制仍需要已授权账号、Premium 权限和可用播放设备。
-- AI 层已具备基础架构：搜索查询清洗默认使用 `gpt-4.1-mini`，Agent 对话回复默认使用 `gpt-5`；未配置 API key 时会回退到确定性本地逻辑。
+- 后端已实现默认用户、曲目缓存、歌单添加、队列持久化、播放会话持久化、Spotify 授权/搜索/播放桥接。
+- AI 层固定使用 DeepSeek `deepseek-v4-pro`，Agent 对话支持 SSE 流式输出。未配置 API key 时会回退到确定性本地逻辑。
+- Agent 已具备直接操作后端歌单/队列的基础能力：创建、重命名、删除歌单，添加曲目到歌单，加入队列，下一首播放，以及播放/暂停/切歌状态同步。
 
 ## 本地运行
 
 1. 启动 MySQL 和 Redis。
-2. 直接编辑 `quaver-server/quaver-server-boot/src/main/resources/application.yml`，填入 MySQL、Redis、OpenAI、Spotify 和可选 API key 配置。
-3. 直接编辑 `quaver-client/.env`，填入前端需要的后端地址和可选 API key。
-4. 在 Spotify Developer Dashboard 中把这个回调地址加入应用配置：
+2. 在 `quaver-server/.env` 中维护后端本地私密配置。当前只需要你补一个 DeepSeek key：
+
+```properties
+QUAVER_AI_API_KEY=你的 DeepSeek key
+```
+
+3. 后端固定使用 `deepseek-v4-pro`，不需要再配置模型名。
+4. `quaver-client/.env` 只保留前端连接后端所需配置，不再配置 Agent 模型或 Agent key。
+5. 在 Spotify Developer Dashboard 中把这个回调地址加入应用配置：
 
 ```text
 http://127.0.0.1:8080/api/spotify/auth/callback
 ```
 
-5. 启动后端：
+6. 启动后端：
 
 ```bash
 cd quaver-server
 mvn -s .mvn-local-settings.xml -pl quaver-server-boot -am spring-boot:run
 ```
 
-6. 启动前端：
+7. 启动前端：
 
 ```bash
 cd quaver-client
