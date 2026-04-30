@@ -1,6 +1,7 @@
 package com.quaver.agent.service;
 
 import com.quaver.agent.model.AgentIntent;
+import com.quaver.agent.model.ParsedAgentCommand;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,32 @@ class AgentCommandParserTest {
     @Test
     void shouldDetectSearchIntent() {
         Assertions.assertEquals(AgentIntent.SEARCH, parser.parse("搜索 chill 歌单").intent());
+    }
+
+    @Test
+    void shouldDetectPlaylistCreation() {
+        ParsedAgentCommand command = parser.parse("创建歌单 夜跑");
+
+        Assertions.assertEquals(AgentIntent.CREATE_PLAYLIST, command.intent());
+        Assertions.assertEquals("夜跑", command.query());
+    }
+
+    @Test
+    void shouldDetectPlaylistRename() {
+        ParsedAgentCommand command = parser.parse("把歌单 夜跑 改名为 深夜跑步");
+
+        Assertions.assertEquals(AgentIntent.RENAME_PLAYLIST, command.intent());
+        Assertions.assertEquals("夜跑", command.argument("playlist"));
+        Assertions.assertEquals("深夜跑步", command.argument("name"));
+    }
+
+    @Test
+    void shouldDetectAddTrackToPlaylist() {
+        ParsedAgentCommand command = parser.parse("把七里香加入歌单 夜跑");
+
+        Assertions.assertEquals(AgentIntent.ADD_TRACK_TO_PLAYLIST, command.intent());
+        Assertions.assertEquals("七里香", command.argument("track"));
+        Assertions.assertEquals("夜跑", command.argument("playlist"));
     }
 
     @Test

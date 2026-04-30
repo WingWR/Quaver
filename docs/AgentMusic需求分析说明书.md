@@ -129,7 +129,7 @@ AgentMusic 是一个“聊天驱动的音乐软件”。核心交互不是传统
 
 能力：
 
-- 配置 OpenAI/Kimi/Spotify 等外部服务参数
+- 配置 DeepSeek/Kimi/Spotify 等外部服务参数
 - 配置 bridge Spotify 账号
 - 维护系统默认设备、授权回调地址和调试配置
 
@@ -138,7 +138,7 @@ AgentMusic 是一个“聊天驱动的音乐软件”。核心交互不是传统
 当前涉及：
 
 - Spotify Web API
-- OpenAI API 或兼容 LLM API
+- DeepSeek API 或兼容 LLM API
 
 ### 2.6 运行环境
 
@@ -251,7 +251,7 @@ AgentMusic 是一个“聊天驱动的音乐软件”。核心交互不是传统
 #### 4.2.2 外部 API 接口
 
 - Spotify Web API
-- OpenAI API 或 OpenAI 兼容 API
+- DeepSeek API 或 DeepSeek 兼容 API
 
 ### 4.3 通信接口
 
@@ -428,7 +428,7 @@ AgentMusic 是一个“聊天驱动的音乐软件”。核心交互不是传统
 
 ### 6.4 安全需求
 
-- OpenAI API Key、Spotify Client Secret 不得提交入仓库
+- DeepSeek API Key、Spotify Client Secret 不得提交入仓库
 - bridge Spotify 账号的私有资源不得直接暴露给普通用户
 - 用户密码若后续实现，必须使用哈希存储
 
@@ -447,7 +447,7 @@ AgentMusic 是一个“聊天驱动的音乐软件”。核心交互不是传统
 ### 7.2 第三方依赖约束
 
 - 依赖 Spotify Web API
-- 依赖 OpenAI API 或兼容服务
+- 依赖 DeepSeek API 或兼容服务
 - 外部网络不可达时，部分功能无法工作
 
 ### 7.3 账户与服务约束

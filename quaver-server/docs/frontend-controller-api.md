@@ -108,8 +108,8 @@ Request body:
 ```json
 {
   "title": "Quaver Agent Session",
-  "model": "gpt-5",
-  "spotifyDeveloperAccount": "drinkinhuang@gmail.com",
+  "model": "deepseek-v4-pro",
+  "spotifyDeveloperAccount": "developer@example.com",
   "metadata": {
     "workspace": "agent"
   }
@@ -124,12 +124,39 @@ Request body:
 
 ```json
 {
-  "content": "给我播放 chill 粤语歌",
-  "model": "gpt-5",
-  "spotifyDeveloperAccount": "drinkinhuang@gmail.com",
+  "content": "给我播放 chill 粤语�?",
+  "model": "deepseek-v4-pro",
+  "spotifyDeveloperAccount": "developer@example.com",
   "metadata": {
     "workspace": "agent"
   }
+}
+```
+
+### `POST /agent/conversations/{conversationId}/messages/stream`
+
+Streams the same transient Agent response over SSE. The frontend uses this endpoint for live assistant deltas and receives a final payload with optional `libraryMutation` for playlist/queue/playback synchronization.
+
+Request body:
+
+```json
+{
+  "content": "把七里香加入歌单 夜跑",
+  "model": "deepseek-v4-pro",
+  "spotifyDeveloperAccount": "developer@example.com",
+  "metadata": {
+    "workspace": "agent",
+    "selectedPlaylistId": "playlist-id"
+  }
+}
+```
+
+SSE event data shape:
+
+```json
+{
+  "type": "assistant_delta",
+  "delta": "正在处理"
 }
 ```
 
@@ -142,13 +169,13 @@ Request body:
 ```json
 {
   "query": "粤语 chill",
-  "model": "gpt-4.1-mini",
+  "model": "deepseek-v4-pro",
   "limit": 8,
   "offset": 0,
   "selectedPlaylistId": null,
   "playlistIds": [],
   "queueTrackIds": [],
-  "spotifyDeveloperAccount": "drinkinhuang@gmail.com",
+  "spotifyDeveloperAccount": "developer@example.com",
   "metadata": {
     "scope": "music_search",
     "workspace": "player_bar"
@@ -163,7 +190,7 @@ Response shape:
   "query": "粤语 chill",
   "tracks": [],
   "total": 0,
-  "model": "gpt-4.1-mini",
+  "model": "deepseek-v4-pro",
   "requestId": "uuid",
   "status": "empty",
   "tookMs": 16
@@ -179,10 +206,10 @@ Response shape:
 ```json
 {
   "aiKeyConfigured": false,
-  "aiModel": "gpt-5",
-  "aiSearchModel": "gpt-4.1-mini",
-  "aiAgentModel": "gpt-5",
-  "aiBaseUrl": "https://api.openai.com/v1",
+  "aiModel": "deepseek-v4-pro",
+  "aiSearchModel": "deepseek-v4-pro",
+  "aiAgentModel": "deepseek-v4-pro",
+  "aiBaseUrl": "https://api.deepseek.com",
   "spotifyBridgeEnabled": true,
   "spotifyBridgeAuthorized": false
 }

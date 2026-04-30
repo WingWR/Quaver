@@ -1,17 +1,22 @@
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
+      - optional:file:quaver-server/.env[.properties]
   application:
     name: quaver-server
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
-    username: root
-    password: WANGRUI37211WING
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${QUAVER_DB_URL:jdbc:mysql://127.0.0.1:3306/quaver?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true}
+    username: ${QUAVER_DB_USERNAME:root}
+    password: ${QUAVER_DB_PASSWORD:}
+    driver-class-name: ${QUAVER_DB_DRIVER:com.mysql.cj.jdbc.Driver}
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
-      password:
-      database: 0
+      host: ${QUAVER_REDIS_HOST:127.0.0.1}
+      port: ${QUAVER_REDIS_PORT:6379}
+      password: ${QUAVER_REDIS_PASSWORD:}
+      database: ${QUAVER_REDIS_DATABASE:0}
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -34,32 +39,29 @@ mybatis-plus:
 
 quaver:
   frontend:
-    base-url: http://127.0.0.1:5173
+    base-url: ${QUAVER_FRONTEND_BASE_URL:http://127.0.0.1:5173}
     allowed-origins:
-      - http://localhost:5173
-      - http://127.0.0.1:5173
-  security:
-    backend-api-key:
-    agent-api-key:
+      - ${QUAVER_FRONTEND_ORIGIN_LOCALHOST:http://localhost:5173}
+      - ${QUAVER_FRONTEND_ORIGIN_LOOPBACK:http://127.0.0.1:5173}
   app:
-    default-user-id: demo-user
-    default-username: Demo Listener
-    default-email: demo-user@quaver.local
+    default-user-id: ${QUAVER_DEFAULT_USER_ID:demo-user}
+    default-username: ${QUAVER_DEFAULT_USERNAME:Demo Listener}
+    default-email: ${QUAVER_DEFAULT_EMAIL:demo-user@quaver.local}
   ai:
-    api-key:
-    model: gpt-5
-    search-model: gpt-4.1-mini
-    agent-model: gpt-5
-    base-url: https://api.openai.com/v1
+    api-key: ${QUAVER_AI_API_KEY:}
+    model: deepseek-v4-pro
+    search-model: deepseek-v4-pro
+    agent-model: deepseek-v4-pro
+    base-url: https://api.deepseek.com
   spotify:
-    enabled: true
-    client-id: 2a4e4c290575410f8b7d13a429e9ceff
-    client-secret: 7fba92427514484d9d55af9e60a0111b
-    redirect-uri: http://127.0.0.1:8080/api/spotify/auth/callback
-    developer-account: drinkinhuang@gmail.com
-    default-device-id: 59728a6b9cfca779196e5da6a58ae3eff021a6aa
-    bridge-refresh-token:
-    search-market: US
+    enabled: ${QUAVER_SPOTIFY_ENABLED:true}
+    client-id: ${QUAVER_SPOTIFY_CLIENT_ID:}
+    client-secret: ${QUAVER_SPOTIFY_CLIENT_SECRET:}
+    redirect-uri: ${QUAVER_SPOTIFY_REDIRECT_URI:http://127.0.0.1:8080/api/spotify/auth/callback}
+    developer-account: ${QUAVER_SPOTIFY_DEVELOPER_ACCOUNT:}
+    default-device-id: ${QUAVER_SPOTIFY_DEFAULT_DEVICE_ID:}
+    bridge-refresh-token: ${QUAVER_SPOTIFY_BRIDGE_REFRESH_TOKEN:}
+    search-market: ${QUAVER_SPOTIFY_SEARCH_MARKET:US}
     scopes:
       - user-read-private
       - user-read-email

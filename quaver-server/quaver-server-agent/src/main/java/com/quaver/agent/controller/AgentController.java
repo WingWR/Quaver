@@ -9,12 +9,14 @@ import com.quaver.agent.dto.SendAgentMessageRequest;
 import com.quaver.agent.dto.SendAgentMessageResponse;
 import com.quaver.agent.service.AgentConversationService;
 import com.quaver.agent.service.AgentTrackSearchService;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/agent")
@@ -45,6 +47,12 @@ public class AgentController {
     public SendAgentMessageResponse sendMessage(@PathVariable String conversationId,
                                                 @RequestBody SendAgentMessageRequest request) {
         return agentConversationService.sendMessage(conversationId, request);
+    }
+
+    @PostMapping(value = "/conversations/{conversationId}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamMessage(@PathVariable String conversationId,
+                                    @RequestBody SendAgentMessageRequest request) {
+        return agentConversationService.streamMessage(conversationId, request);
     }
 
     @PostMapping("/search/tracks")

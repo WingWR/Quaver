@@ -1,5 +1,6 @@
 package com.quaver.agent.dto;
 
+import com.quaver.library.dto.LibraryMutationResponse;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,4 +20,6 @@ public class SendAgentMessageResponse {
     private AgentMessageDto assistantMessage;
 
     private List<AgentMessageDto> messages;
+
+    private LibraryMutationResponse libraryMutation;
 }

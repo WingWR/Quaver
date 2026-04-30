@@ -3,8 +3,16 @@ package com.quaver.agent.model;
 public enum AgentIntent {
     SEARCH,
     PLAY,
+    PLAY_PLAYLIST,
     PAUSE,
     NEXT,
     PREVIOUS,
+    LIST_PLAYLISTS,
+    CREATE_PLAYLIST,
+    RENAME_PLAYLIST,
+    DELETE_PLAYLIST,
+    ADD_TRACK_TO_PLAYLIST,
+    ADD_TRACK_TO_QUEUE,
+    INSERT_TRACK_NEXT,
     CHAT
 }
