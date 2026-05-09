@@ -47,7 +47,7 @@ public class DefaultAgentAiService implements AgentAiService {
                 - PAUSE, NEXT, PREVIOUS: playback controls.
                 - LIST_PLAYLISTS, CREATE_PLAYLIST, RENAME_PLAYLIST, DELETE_PLAYLIST.
                 - ADD_TRACK_TO_PLAYLIST: add exactly one best matching track to a playlist unless the user explicitly asks for multiple.
-                - ADD_TRACK_TO_QUEUE: add exactly one best matching track to the queue.
+                - ADD_TRACK_TO_QUEUE: add one best matching track for a specific song request; add multiple tracks for artist/genre/mood/"some songs" requests.
                 - REMOVE_TRACK_FROM_QUEUE: remove one matching track from the current queue.
                 - CLEAR_QUEUE: clear all tracks from the current queue and stop queue playback.
                 - INSERT_TRACK_NEXT: add exactly one best matching track as next up, or move an existing queued track to next up/front.
@@ -58,6 +58,7 @@ public class DefaultAgentAiService implements AgentAiService {
                 - Use PLAY when the user asks to hear/play/listen now.
                 - If the user names a specific song, set selectionMode to "single"; the executor will use the top search result only.
                 - If the user asks for songs by an artist, genre, mood, scene, or says "some songs", set selectionMode to "collection".
+                - Chinese examples: "\u64ad\u653e\u591c\u66f2" => single; "\u64ad\u653e\u5468\u6770\u4f26\u7684\u6b4c" or "\u641c\u7d22\u5468\u6770\u4f26\u7684\u6b4c" => collection.
                 - Never turn ADD_TRACK_TO_PLAYLIST into PLAY or queue mutation.
                 - In Chinese, "播放列表" or "播放队列" means the current queue; never treat it as a saved playlist.
                 - For "从播放列表/播放队列移除/删除 X", use REMOVE_TRACK_FROM_QUEUE.
@@ -96,19 +97,26 @@ public class DefaultAgentAiService implements AgentAiService {
             return rawQuery;
         }
 
+        String selectionMode = request.getMetadata() == null
+                ? ""
+                : String.valueOf(request.getMetadata().getOrDefault("selectionMode", "")).trim();
+
         String prompt = """
-                You prepare single-track music search queries for a Spotify-backed player.
+                You prepare music search queries for a Spotify-backed player.
                 Return only compact JSON with this shape: {"query":"..."}.
                 Preserve artist names, exact song names, languages, genres, and user intent.
                 Remove filler words and do not invent unavailable facts.
-                Never expand the request into a playlist, mix, recommendation set, or multiple-song query unless the user explicitly typed multiple song names.
-                Prefer exact track lookup phrasing over broad thematic wording.
+                If selectionMode is "single", prefer exact track lookup phrasing and keep the requested song title.
+                If selectionMode is "collection", keep the artist, genre, mood, or scene broad enough to return multiple tracks; do not collapse it to one song title.
+                Chinese examples: "\u591c\u66f2" with single => "\u591c\u66f2"; "\u5468\u6770\u4f26\u7684\u6b4c" with collection => "\u5468\u6770\u4f26".
                 """;
 
         String input = """
                 User query: %s
+                Selection mode: %s
                 """.formatted(
-                rawQuery
+                rawQuery,
+                selectionMode
         );
 
         try {
