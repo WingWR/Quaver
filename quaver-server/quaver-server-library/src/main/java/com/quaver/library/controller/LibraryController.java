@@ -46,6 +46,16 @@ public class LibraryController {
         return libraryService.insertTrackNext(request.getTrackId());
     }
 
+    @DeleteMapping("/queue/{trackId}")
+    public LibraryMutationResponse removeFromQueue(@PathVariable String trackId) {
+        return libraryService.removeTrackFromQueue(trackId);
+    }
+
+    @DeleteMapping("/queue")
+    public LibraryMutationResponse clearQueue() {
+        return libraryService.clearQueue();
+    }
+
     @PostMapping("/playlists")
     public LibraryMutationResponse createPlaylist(@RequestBody PlaylistCreateRequest request) {
         return libraryService.createPlaylist(request.getName(), request.getDescription());
@@ -75,6 +85,7 @@ public class LibraryController {
     @PatchMapping("/playback/state")
     public LibraryMutationResponse updatePlaybackState(@RequestBody PlaybackStateUpdateRequest request) {
         PlaybackStateView playback = libraryService.updatePlaybackState(
+                request.getQueue(),
                 request.getCurrentTrackIndex(),
                 request.getIsPlaying(),
                 request.getProgress(),

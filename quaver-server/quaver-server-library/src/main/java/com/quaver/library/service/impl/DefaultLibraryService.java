@@ -99,7 +99,7 @@ public class DefaultLibraryService implements LibraryService {
         TrackView track = resolveTrack(trackId);
         PlaybackStateView playbackState = getPlaybackStateOrDefault();
         List<TrackView> queue = new ArrayList<>(playbackState.queue());
-        boolean exists = queue.stream().anyMatch(item -> item.id().equals(track.id()));
+        boolean exists = queue.stream().anyMatch(item -> sameTrack(item, track));
         if (!exists) {
             queue.add(track);
         }
@@ -122,13 +122,77 @@ public class DefaultLibraryService implements LibraryService {
             return new LibraryMutationResponse(true, "Track inserted into queue.", saved, null, null);
         }
 
-        queue.removeIf(item -> item.id().equals(track.id()));
-        int insertIndex = Math.min(playbackState.currentTrackIndex() + 1, queue.size());
+        TrackView activeTrack = queue.get(clampIndex(playbackState.currentTrackIndex(), queue));
+        if (sameTrack(activeTrack, track)) {
+            return new LibraryMutationResponse(true, "Track is already playing.", playbackState, null, null);
+        }
+
+        queue.removeIf(item -> sameTrack(item, track));
+        int currentTrackIndex = findTrackIndex(queue, activeTrack);
+        if (currentTrackIndex < 0) {
+            currentTrackIndex = clampIndex(playbackState.currentTrackIndex(), queue);
+        }
+        int insertIndex = Math.min(currentTrackIndex + 1, queue.size());
         queue.add(insertIndex, track);
-        PlaybackStateView saved = persistPlaybackState(queue, playbackState.currentTrackIndex(), playbackState.isPlaying(),
+        PlaybackStateView saved = persistPlaybackState(queue, currentTrackIndex, playbackState.isPlaying(),
                 playbackState.progress(), playbackState.volume(), playbackState.playbackSource(),
                 playbackState.isShuffleEnabled(), playbackState.repeatMode(), null, playbackState);
         return new LibraryMutationResponse(true, "Track inserted next.", saved, null, null);
+    }
+
+    @Override
+    @Transactional
+    public LibraryMutationResponse removeTrackFromQueue(String trackId) {
+        PlaybackStateView playbackState = getPlaybackStateOrDefault();
+        List<TrackView> queue = new ArrayList<>(playbackState.queue());
+        if (queue.isEmpty()) {
+            return new LibraryMutationResponse(true, "Queue is already empty.", playbackState, null, null);
+        }
+
+        int removedIndex = findTrackIndexById(queue, trackId);
+        if (removedIndex < 0) {
+            return new LibraryMutationResponse(true, "Track was not in queue.", playbackState, null, null);
+        }
+
+        TrackView activeTrack = queue.get(clampIndex(playbackState.currentTrackIndex(), queue));
+        queue.remove(removedIndex);
+        int currentTrackIndex = findTrackIndex(queue, activeTrack);
+        if (currentTrackIndex < 0) {
+            currentTrackIndex = clampIndex(Math.min(removedIndex, queue.size() - 1), queue);
+        }
+
+        PlaybackStateView saved = persistPlaybackState(
+                queue,
+                currentTrackIndex,
+                playbackState.isPlaying() && !queue.isEmpty(),
+                removedIndex == playbackState.currentTrackIndex() ? 0 : playbackState.progress(),
+                playbackState.volume(),
+                playbackState.playbackSource(),
+                playbackState.isShuffleEnabled(),
+                playbackState.repeatMode(),
+                null,
+                playbackState
+        );
+        return new LibraryMutationResponse(true, "Track removed from queue.", saved, null, null);
+    }
+
+    @Override
+    @Transactional
+    public LibraryMutationResponse clearQueue() {
+        PlaybackStateView playbackState = getPlaybackStateOrDefault();
+        PlaybackStateView saved = persistPlaybackState(
+                List.of(),
+                0,
+                false,
+                0,
+                playbackState.volume(),
+                playbackState.playbackSource(),
+                playbackState.isShuffleEnabled(),
+                playbackState.repeatMode(),
+                null,
+                playbackState
+        );
+        return new LibraryMutationResponse(true, "Queue cleared.", saved, null, null);
     }
 
     @Override
@@ -250,11 +314,12 @@ public class DefaultLibraryService implements LibraryService {
 
     @Override
     @Transactional
-    public PlaybackStateView updatePlaybackState(Integer currentTrackIndex, Boolean isPlaying, Integer progress, Integer volume,
+    public PlaybackStateView updatePlaybackState(List<TrackView> queue, Integer currentTrackIndex, Boolean isPlaying, Integer progress, Integer volume,
                                                  PlaybackSource playbackSource, Boolean isShuffleEnabled, RepeatMode repeatMode) {
         PlaybackStateView currentState = getPlaybackStateOrDefault();
+        List<TrackView> nextQueue = queue == null ? currentState.queue() : cacheTracks(queue);
         return persistPlaybackState(
-                currentState.queue(),
+                nextQueue,
                 currentTrackIndex == null ? currentState.currentTrackIndex() : currentTrackIndex,
                 isPlaying == null ? currentState.isPlaying() : isPlaying,
                 progress == null ? currentState.progress() : Math.max(progress, 0),
@@ -547,6 +612,42 @@ public class DefaultLibraryService implements LibraryService {
 
     private boolean containsIgnoreCase(String value, String query) {
         return value != null && value.toLowerCase().contains(query);
+    }
+
+    private int findTrackIndex(List<TrackView> queue, TrackView target) {
+        if (target == null || queue == null) {
+            return -1;
+        }
+        for (int index = 0; index < queue.size(); index++) {
+            if (sameTrack(queue.get(index), target)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private int findTrackIndexById(List<TrackView> queue, String trackId) {
+        if (trackId == null || trackId.isBlank() || queue == null) {
+            return -1;
+        }
+        for (int index = 0; index < queue.size(); index++) {
+            TrackView track = queue.get(index);
+            if (Objects.equals(track.id(), trackId)
+                    || Objects.equals(track.spotifyId(), trackId)
+                    || Objects.equals(track.spotifyUri(), trackId)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private boolean sameTrack(TrackView left, TrackView right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        return Objects.equals(left.id(), right.id())
+                || (left.spotifyId() != null && Objects.equals(left.spotifyId(), right.spotifyId()))
+                || (left.spotifyUri() != null && Objects.equals(left.spotifyUri(), right.spotifyUri()));
     }
 
     private String pickAccent(String seed) {
