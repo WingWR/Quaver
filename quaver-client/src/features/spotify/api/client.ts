@@ -59,12 +59,6 @@ export function fetchSpotifyPlaylistTracks(playlistId: string, signal?: AbortSig
   );
 }
 
-export function fetchSpotifyPlaybackState(signal?: AbortSignal) {
-  return backendRequest<SpotifyPlaybackState>(`${SPOTIFY_BASE_PATH}/playback/state`, {
-    signal,
-  });
-}
-
 export function startSpotifyPlayback(options: SpotifyPlaybackOptions) {
   return backendRequest<SpotifyPlaybackState>(`${SPOTIFY_BASE_PATH}/playback/play`, {
     method: "POST",
@@ -74,20 +68,6 @@ export function startSpotifyPlayback(options: SpotifyPlaybackOptions) {
 
 export function pauseSpotifyPlayback(deviceId?: string | null) {
   return backendRequest<SpotifyPlaybackState>(`${SPOTIFY_BASE_PATH}/playback/pause`, {
-    method: "POST",
-    body: JSON.stringify({ deviceId }),
-  });
-}
-
-export function skipToNextSpotifyTrack(deviceId?: string | null) {
-  return backendRequest<SpotifyPlaybackState>(`${SPOTIFY_BASE_PATH}/playback/next`, {
-    method: "POST",
-    body: JSON.stringify({ deviceId }),
-  });
-}
-
-export function skipToPreviousSpotifyTrack(deviceId?: string | null) {
-  return backendRequest<SpotifyPlaybackState>(`${SPOTIFY_BASE_PATH}/playback/previous`, {
     method: "POST",
     body: JSON.stringify({ deviceId }),
   });
@@ -121,13 +101,6 @@ export function setSpotifyVolume(volume: number, deviceId?: string | null) {
   return backendRequest<SpotifyPlaybackState>(`${SPOTIFY_BASE_PATH}/playback/volume`, {
     method: "POST",
     body: JSON.stringify({ volume, deviceId }),
-  });
-}
-
-export function addTrackToSpotifyQueue(spotifyUri: string, deviceId?: string | null) {
-  return backendRequest<SpotifyPlaybackState>(`${SPOTIFY_BASE_PATH}/playback/queue`, {
-    method: "POST",
-    body: JSON.stringify({ spotifyUri, deviceId }),
   });
 }
 

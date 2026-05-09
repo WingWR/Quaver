@@ -49,7 +49,7 @@ public class AgentCommandParser {
         if (isQueueAppend(normalized, lowered)) {
             String query = cleanTrackQuery(removeQueueWords(normalized));
             return new ParsedAgentCommand(AgentIntent.ADD_TRACK_TO_QUEUE, query,
-                    Map.of(SELECTION_MODE, SELECTION_SINGLE));
+                    Map.of(SELECTION_MODE, inferSelectionMode(normalized, query)));
         }
 
         ParsedAgentCommand addToPlaylist = parseAddToPlaylist(normalized);
@@ -302,6 +302,19 @@ public class AgentCommandParser {
 
     private String inferSelectionMode(String content, String query) {
         String lowered = content.toLowerCase();
+        if (containsAny(lowered,
+                "single", "one song", "one track", "specific song", "this song", "that song",
+                "\u4e00\u9996", "\u4e00\u66f2", "\u8fd9\u9996", "\u90a3\u9996", "\u67d0\u9996",
+                "\u5355\u66f2")) {
+            return SELECTION_SINGLE;
+        }
+        if (containsAny(lowered,
+                "artist", "songs by", "some songs", "several songs", "multiple songs",
+                "\u6b4c\u624b", "\u7684\u6b4c", "\u7684\u4f5c\u54c1", "\u4e00\u4e9b",
+                "\u51e0\u9996", "\u591a\u9996", "\u63a8\u8350", "\u6765\u70b9",
+                "\u968f\u4fbf", "\u968f\u673a", "\u5408\u96c6", "\u98ce\u683c")) {
+            return SELECTION_COLLECTION;
+        }
         if (containsAny(lowered,
                 "artist", "songs by", "some songs", "several songs", "歌手", "的歌", "一些", "几首", "多首",
                 "歌单", "推荐", "来点", "播点", "随机", "随便", "合集")) {
