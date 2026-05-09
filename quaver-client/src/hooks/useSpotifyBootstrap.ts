@@ -20,14 +20,29 @@ function sameTrack(left?: Track, right?: Track) {
   return (left.spotifyId ?? left.id) === (right.spotifyId ?? right.id);
 }
 
+function mergePlaybackQueues(primaryQueue: Track[], secondaryQueue: Track[]) {
+  return primaryQueue.reduce<Track[]>((mergedQueue, track) => {
+    if (!mergedQueue.some((queuedTrack) => sameTrack(queuedTrack, track))) {
+      mergedQueue.push(track);
+    }
+    return mergedQueue;
+  }, [...secondaryQueue]);
+}
+
 function syncSpotifyPlaybackSnapshot(playback: Awaited<ReturnType<typeof fetchSpotifyPlaybackState>>) {
-  const { queue, currentTrackIndex } = useQuaverStore.getState();
+  const { queue, currentTrackIndex, suppressExternalQueueHydration } = useQuaverStore.getState();
+  if (suppressExternalQueueHydration && !queue.length) {
+    return;
+  }
+
   const spotifyCurrentTrack = playback.queue[playback.currentTrackIndex] ?? playback.queue[0];
   const nextQueue =
     spotifyCurrentTrack && queue.some((track) => sameTrack(track, spotifyCurrentTrack))
       ? queue
-      : playback.queue.length
-        ? playback.queue
+      : playback.queue.length && queue.length
+        ? mergePlaybackQueues(queue, playback.queue)
+        : playback.queue.length
+          ? playback.queue
         : queue;
   const nextCurrentTrackIndex =
     spotifyCurrentTrack && nextQueue.length

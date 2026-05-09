@@ -54,6 +54,7 @@ interface QuaverStore {
   playbackSource: PlaybackSource;
   isShuffleEnabled: boolean;
   repeatMode: RepeatMode;
+  suppressExternalQueueHydration: boolean;
   spotify: SpotifyState;
   library: ResourceState;
   replacePlaylistsBySource: (source: MusicSource, playlists: Playlist[]) => void;
@@ -72,6 +73,7 @@ interface QuaverStore {
   playPrevious: () => void;
   insertTrackNext: (track: Track) => void;
   appendTrackToQueue: (track: Track) => void;
+  setSuppressExternalQueueHydration: (suppressed: boolean) => void;
   toggleShuffle: () => void;
   cycleRepeatMode: () => void;
   setCanvasView: (view: CanvasView) => void;
@@ -255,6 +257,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
   playbackSource: "backend",
   isShuffleEnabled: false,
   repeatMode: "off",
+  suppressExternalQueueHydration: false,
   spotify: initialSpotifyState,
   library: initialResourceState,
   replacePlaylistsBySource: (source, incomingPlaylists) =>
@@ -299,6 +302,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
         progress: 0,
         isPlaying: normalized.queue.length > 0,
         playbackSource,
+        suppressExternalQueueHydration: false,
         queueRevision: state.queueRevision + 1,
       };
     }),
@@ -318,6 +322,9 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
         playbackSource: payload.playbackSource ?? state.playbackSource,
         isShuffleEnabled: payload.isShuffleEnabled ?? state.isShuffleEnabled,
         repeatMode: payload.repeatMode ?? state.repeatMode,
+        suppressExternalQueueHydration: normalized.queue.length
+          ? false
+          : state.suppressExternalQueueHydration,
         queueRevision: state.queueRevision + 1,
       };
     }),
@@ -366,6 +373,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
         return {
           queue: [track],
           currentTrackIndex: 0,
+          suppressExternalQueueHydration: false,
           queueRevision: state.queueRevision + 1,
         };
       }
@@ -383,6 +391,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
       }
 
       const queue = [...state.queue];
+      const activeTrack = state.queue[state.currentTrackIndex];
       let insertIndex = state.currentTrackIndex + 1;
 
       if (existingIndex >= 0) {
@@ -395,8 +404,21 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
         queue.splice(insertIndex, 0, track);
       }
 
+      const currentTrackIndex = activeTrack
+        ? Math.max(
+            0,
+            queue.findIndex(
+              (queuedTrack) =>
+                (queuedTrack.spotifyId ?? queuedTrack.id) ===
+                (activeTrack.spotifyId ?? activeTrack.id),
+            ),
+          )
+        : state.currentTrackIndex;
+
       return {
         queue,
+        currentTrackIndex,
+        suppressExternalQueueHydration: false,
         queueRevision: state.queueRevision + 1,
       };
     }),
@@ -416,9 +438,12 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
 
       return {
         queue: [...state.queue, track],
+        suppressExternalQueueHydration: false,
         queueRevision: state.queueRevision + 1,
       };
     }),
+  setSuppressExternalQueueHydration: (suppressExternalQueueHydration) =>
+    set({ suppressExternalQueueHydration }),
   toggleShuffle: () =>
     set((state) => ({
       isShuffleEnabled: !state.isShuffleEnabled,

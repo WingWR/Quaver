@@ -23,21 +23,30 @@ function BackIcon() {
 function CoverArt({ playlist }: { playlist: Playlist }) {
   if (playlist.cover) {
     return (
-      <img
-        src={playlist.cover}
-        alt={playlist.name}
-        className="h-28 w-28 rounded-[24px] object-cover shadow-[0_26px_60px_rgba(0,0,0,0.32)] sm:h-36 sm:w-36 sm:rounded-[28px]"
-      />
+      <div className="floating-art relative h-28 w-28 shrink-0 sm:h-36 sm:w-36">
+        <span
+          className="absolute -inset-3 rounded-[34px] opacity-50 blur-2xl"
+          style={{ background: playlist.accent || "#34d399" }}
+        />
+        <img
+          src={playlist.cover}
+          alt={playlist.name}
+          className="relative h-28 w-28 rounded-[26px] border border-white/[0.12] object-cover shadow-[0_30px_80px_rgba(0,0,0,0.36)] sm:h-36 sm:w-36 sm:rounded-[30px]"
+        />
+      </div>
     );
   }
 
   return (
     <div
-      className="h-28 w-28 rounded-[24px] shadow-[0_26px_60px_rgba(0,0,0,0.32)] sm:h-36 sm:w-36 sm:rounded-[28px]"
+      className="floating-art relative h-28 w-28 shrink-0 overflow-hidden rounded-[26px] border border-white/[0.12] shadow-[0_30px_80px_rgba(0,0,0,0.36)] sm:h-36 sm:w-36 sm:rounded-[30px]"
       style={{
         background: `linear-gradient(135deg, ${playlist.accent || "#34d399"}66, rgba(56,189,248,0.22), rgba(244,114,182,0.18))`,
       }}
-    />
+    >
+      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/20 blur-2xl" />
+      <div className="absolute bottom-5 left-5 right-5 h-2 rounded-full bg-white/26" />
+    </div>
   );
 }
 
@@ -135,10 +144,10 @@ function LyricsPanel({
 
 function EmptyPlaylistTracks({ playlist }: { playlist: Playlist }) {
   return (
-    <div className="flex h-full min-h-[240px] items-center justify-center rounded-[28px] border border-dashed border-white/[0.08] bg-white/[0.03] px-6 text-center">
-      <div>
+    <div className="sonic-panel flex h-full min-h-[240px] items-center justify-center rounded-[28px] border-dashed px-6 text-center">
+      <div className="relative">
         <p className="text-sm font-semibold text-white">This playlist is empty</p>
-        <p className="mt-2 max-w-lg text-sm leading-6 text-brand-grey">
+        <p className="mt-2 max-w-lg text-sm leading-6 text-white/52">
           Add tracks from search results or the queue when you are ready to build this playlist.
         </p>
       </div>
@@ -210,17 +219,23 @@ export default function LibraryWorkspaceView() {
     <>
       {selectedPlaylist ? (
         <>
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="relative overflow-hidden rounded-[32px] border border-white/[0.07] bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] lg:p-6">
+            <div
+              className="pointer-events-none absolute -left-16 -top-20 h-64 w-64 rounded-full opacity-30 blur-3xl"
+              style={{ background: selectedPlaylist.accent || "#34d399" }}
+            />
+            <div className="pointer-events-none absolute inset-0 sonic-grid opacity-15" />
+            <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-5">
               <CoverArt playlist={selectedPlaylist} />
               <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.35em] text-brand-grey">
+                <p className="section-eyebrow">
                   Quaver Playlist
                 </p>
-                <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+                <h1 className="chromatic-title mt-3 text-3xl font-bold tracking-[-0.05em] sm:text-5xl">
                   {selectedPlaylist.name}
                 </h1>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-grey">
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/56">
                   {selectedPlaylist.description || "No description has been added yet."}
                 </p>
                 {spotifyMessage ? (
@@ -230,11 +245,11 @@ export default function LibraryWorkspaceView() {
             </div>
 
             <div className="flex flex-wrap gap-3 self-start lg:self-end">
-              <div className="rounded-full bg-white/[0.045] px-4 py-2 text-sm text-brand-grey">
+              <div className="metric-chip rounded-full px-4 py-2 text-sm text-white/62">
                 {selectedPlaylist.tracks.length} Tracks
               </div>
               <div
-                className={`rounded-full px-4 py-2 text-sm ${
+                className={`metric-chip rounded-full px-4 py-2 text-sm ${
                   library.status === "error"
                     ? "bg-[#c9a34f]/12 text-[#f2d08a]"
                     : "bg-spotify-green/12 text-spotify-green"
@@ -244,7 +259,7 @@ export default function LibraryWorkspaceView() {
               </div>
               {spotify.isAuthenticated ? (
                 <div
-                  className={`rounded-full px-4 py-2 text-sm ${
+                  className={`metric-chip rounded-full px-4 py-2 text-sm ${
                     spotify.playerReady
                       ? "bg-spotify-green/12 text-spotify-green"
                       : "bg-white/[0.045] text-brand-grey"
@@ -257,15 +272,16 @@ export default function LibraryWorkspaceView() {
                 <button
                   type="button"
                   onClick={() => void connectSpotify()}
-                  className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f3f3]"
+                  className="rounded-full bg-[linear-gradient(135deg,#d9fff0,#67e8f9)] px-4 py-2 text-sm font-bold text-black transition hover:-translate-y-0.5"
                 >
                   {spotify.isAuthenticated ? "Reconnect Bridge" : "Authorize Bridge"}
                 </button>
               ) : null}
             </div>
+            </div>
           </div>
 
-          <div className="mt-8 hidden grid-cols-[56px_minmax(0,1fr)_140px_96px] gap-4 border-b border-white/[0.04] pb-3 text-xs uppercase tracking-[0.26em] text-brand-grey md:grid">
+          <div className="mt-6 hidden grid-cols-[56px_minmax(0,1fr)_140px_96px] gap-4 border-b border-white/[0.06] pb-3 text-xs font-bold uppercase tracking-[0.24em] text-white/38 md:grid">
             <span>#</span>
             <span>Track</span>
             <span>Vibe</span>
@@ -281,6 +297,7 @@ export default function LibraryWorkspaceView() {
                   <motion.button
                     key={track.id}
                     type="button"
+                    whileHover={{ x: 4 }}
                     onClick={() => void playPlaylistTrack(selectedPlaylist, index)}
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -291,18 +308,18 @@ export default function LibraryWorkspaceView() {
                         track,
                       });
                     }}
-                    className={`grid w-full grid-cols-[48px_minmax(0,1fr)_76px] items-center gap-3 rounded-[22px] px-2 py-3 text-left transition md:grid-cols-[56px_minmax(0,1fr)_140px_96px] md:gap-4 ${
+                    className={`kinetic-card grid w-full grid-cols-[48px_minmax(0,1fr)_76px] items-center gap-3 rounded-[22px] px-2 py-3 text-left transition duration-300 md:grid-cols-[56px_minmax(0,1fr)_140px_96px] md:gap-4 ${
                       isCurrent
-                        ? "bg-[linear-gradient(135deg,rgba(29,185,84,0.18),rgba(255,255,255,0.04))] text-white"
-                        : "text-white/90 hover:bg-white/[0.04]"
+                        ? "border-emerald-200/18 bg-[linear-gradient(135deg,rgba(29,185,84,0.18),rgba(103,232,249,0.06),rgba(255,255,255,0.035))] text-white"
+                        : "text-white/90 hover:border-white/[0.12]"
                     }`}
                   >
                     <div className="flex items-center justify-center">
                       <div
                         className={`flex h-9 w-9 items-center justify-center rounded-full text-sm ${
                           isCurrent
-                            ? "bg-spotify-green text-brand-black"
-                            : "bg-white/[0.045] text-brand-grey"
+                            ? "bg-[linear-gradient(135deg,#d9fff0,#67e8f9)] font-bold text-brand-black shadow-[0_0_22px_rgba(103,232,249,0.25)]"
+                            : "bg-white/[0.045] text-white/42"
                         }`}
                       >
                         {index + 1}
@@ -312,14 +329,14 @@ export default function LibraryWorkspaceView() {
                       <img
                         src={track.artwork}
                         alt={track.title}
-                        className="h-12 w-12 rounded-2xl object-cover md:h-14 md:w-14"
+                        className="h-12 w-12 rounded-[18px] border border-white/[0.1] object-cover md:h-14 md:w-14"
                       />
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{track.title}</p>
-                        <p className="truncate text-sm text-brand-grey">
+                        <p className="truncate text-sm font-semibold">{track.title}</p>
+                        <p className="truncate text-sm text-white/48">
                           {track.artist} - {track.album}
                         </p>
-                        <p className="mt-1 truncate text-xs capitalize text-brand-grey md:hidden">
+                        <p className="mt-1 truncate text-xs capitalize text-white/42 md:hidden">
                           {track.mood}
                         </p>
                       </div>
@@ -329,9 +346,9 @@ export default function LibraryWorkspaceView() {
                         className="h-2.5 w-2.5 rounded-full"
                         style={{ backgroundColor: track.accent }}
                       />
-                      <span className="capitalize text-brand-grey">{track.mood}</span>
+                      <span className="capitalize text-white/48">{track.mood}</span>
                     </div>
-                    <span className="text-right text-sm text-brand-grey">
+                    <span className="text-right text-sm text-white/48">
                       {formatDuration(track.duration)}
                     </span>
                   </motion.button>
@@ -343,25 +360,25 @@ export default function LibraryWorkspaceView() {
           </div>
         </>
       ) : (
-        <div className="flex h-full min-h-[420px] flex-col justify-center rounded-[32px] border border-dashed border-white/[0.08] bg-white/[0.02] px-8 py-10">
-          <p className="text-xs uppercase tracking-[0.32em] text-brand-grey">Library</p>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white">
+        <div className="sonic-panel flex h-full min-h-[420px] flex-col justify-center rounded-[32px] border-dashed px-8 py-10">
+          <p className="section-eyebrow relative">Library</p>
+          <h1 className="chromatic-title relative mt-4 text-3xl font-bold tracking-[-0.05em]">
             No playlists yet
           </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-brand-grey">
+          <p className="relative mt-4 max-w-3xl text-sm leading-7 text-white/54">
             {library.message ??
               "This user has not created any playlists yet. The library can stay empty; queue and playback will appear as tracks are played."}
           </p>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <div className="rounded-full bg-white/[0.04] px-4 py-2 text-sm text-brand-grey">
+          <div className="relative mt-6 flex flex-wrap gap-3">
+            <div className="metric-chip rounded-full px-4 py-2 text-sm text-white/58">
               Status: {library.status}
             </div>
             {needsSpotifyReconnect ? (
                 <button
                   type="button"
                   onClick={() => void connectSpotify()}
-                  className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f3f3]"
+                  className="rounded-full bg-[linear-gradient(135deg,#d9fff0,#67e8f9)] px-4 py-2 text-sm font-bold text-black transition hover:-translate-y-0.5"
                 >
                 {spotify.isAuthenticated ? "Reconnect Bridge" : "Authorize Bridge"}
                 </button>

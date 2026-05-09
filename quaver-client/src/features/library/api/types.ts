@@ -43,6 +43,7 @@ export interface PlaybackStartRequest {
 }
 
 export interface PlaybackStateUpdateRequest {
+  queue?: Track[];
   currentTrackIndex?: number;
   isPlaying?: boolean;
   progress?: number;

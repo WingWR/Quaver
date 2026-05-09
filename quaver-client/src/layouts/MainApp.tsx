@@ -14,7 +14,13 @@ export default function MainApp() {
   useSpotifyWebPlaybackSdk();
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-brand-black text-white lg:flex-row">
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-brand-black text-white lg:flex-row">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="sonic-grid absolute inset-0 opacity-45" />
+        <div className="aurora-orb absolute -left-28 top-10 h-72 w-72 bg-emerald-400/22" />
+        <div className="aurora-orb absolute right-[14%] top-[-7rem] h-80 w-80 bg-cyan-300/18" />
+        <div className="aurora-orb absolute bottom-[-8rem] left-[42%] h-96 w-96 bg-amber-300/12" />
+      </div>
       <WorkspaceSidebar />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-hero-radial">
         <UserSessionButton />
