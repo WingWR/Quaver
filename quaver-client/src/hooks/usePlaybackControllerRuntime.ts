@@ -7,6 +7,7 @@ import {
   startBackendPlayback,
   updateBackendPlaybackState,
 } from "../features/library/api/client";
+import type { BackendPlaybackState } from "../features/library/api/types";
 import {
   addTrackToSpotifyQueue,
   beginSpotifyBridgeAuthorization,
@@ -377,6 +378,66 @@ export function usePlaybackControllerRuntime() {
     }
   }
 
+  async function applyAgentPlaybackMutation(
+    playback: BackendPlaybackState,
+    playbackCommand = "sync",
+  ) {
+    if (!playback.queue.length || playback.playbackSource !== "spotify") {
+      syncPlayback(playback);
+      return;
+    }
+
+    if (playbackCommand === "pause") {
+      syncPlayback(playback);
+      if (!spotify.isAuthenticated) {
+        return;
+      }
+
+      try {
+        syncSpotifyPlaybackResponse(await pauseSpotifyPlayback(spotifyDeviceId()), playback.queue);
+      } catch (error) {
+        warnSpotifyPlayback(error, "spotify-agent-pause");
+      }
+      return;
+    }
+
+    if (playbackCommand === "start" || playbackCommand === "seek_to_index") {
+      await playTrackList(
+        playback.queue,
+        playback.currentTrackIndex,
+        `agent-${playbackCommand}`,
+      );
+      return;
+    }
+
+    if (playbackCommand === "queue_append" || playbackCommand === "queue_insert_next") {
+      syncPlayback(playback);
+      if (!spotify.isAuthenticated) {
+        return;
+      }
+
+      const queuedTrack =
+        playbackCommand === "queue_insert_next"
+          ? playback.queue[Math.min(playback.currentTrackIndex + 1, playback.queue.length - 1)]
+          : playback.queue[playback.queue.length - 1];
+      if (!queuedTrack?.spotifyUri) {
+        return;
+      }
+
+      try {
+        syncSpotifyPlaybackResponse(
+          await addTrackToSpotifyQueue(queuedTrack.spotifyUri, spotifyDeviceId()),
+          playback.queue,
+        );
+      } catch (error) {
+        warnSpotifyPlayback(error, `spotify-agent-${playbackCommand}-${queuedTrack.id}`);
+      }
+      return;
+    }
+
+    syncPlayback(playback);
+  }
+
   async function playQueueTrack(track: Track, index: number) {
     if (track.spotifyUri && !spotify.isAuthenticated) {
       syncPlayback({
@@ -545,5 +606,6 @@ export function usePlaybackControllerRuntime() {
     queueTrackNext,
     queueTrackLater,
     addTrackToPlaylist,
+    applyAgentPlaybackMutation,
   };
 }

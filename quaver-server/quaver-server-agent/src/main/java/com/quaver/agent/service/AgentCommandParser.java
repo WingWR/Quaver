@@ -10,6 +10,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class AgentCommandParser {
 
+    private static final String SELECTION_MODE = "selectionMode";
+    private static final String SELECTION_SINGLE = "single";
+    private static final String SELECTION_COLLECTION = "collection";
+
     private static final Pattern RENAME_PLAYLIST_EN = Pattern.compile(
             "(?i)rename\\s+(?:playlist\\s+)?(.+?)\\s+to\\s+(.+)");
     private static final Pattern RENAME_PLAYLIST_ZH = Pattern.compile(
@@ -32,6 +36,12 @@ public class AgentCommandParser {
             return rename;
         }
 
+        if (isQueueAppend(normalized, lowered)) {
+            String query = cleanTrackQuery(removeQueueWords(normalized));
+            return new ParsedAgentCommand(AgentIntent.ADD_TRACK_TO_QUEUE, query,
+                    Map.of(SELECTION_MODE, SELECTION_SINGLE));
+        }
+
         ParsedAgentCommand addToPlaylist = parseAddToPlaylist(normalized);
         if (addToPlaylist != null && containsPlaylistWord(normalized)) {
             return addToPlaylist;
@@ -52,10 +62,9 @@ public class AgentCommandParser {
             return new ParsedAgentCommand(AgentIntent.LIST_PLAYLISTS, normalized);
         }
         if (isInsertNext(normalized, lowered)) {
-            return new ParsedAgentCommand(AgentIntent.INSERT_TRACK_NEXT, cleanTrackQuery(removeInsertNextWords(normalized)));
-        }
-        if (isQueueAppend(normalized, lowered)) {
-            return new ParsedAgentCommand(AgentIntent.ADD_TRACK_TO_QUEUE, cleanTrackQuery(removeQueueWords(normalized)));
+            String query = cleanTrackQuery(removeInsertNextWords(normalized));
+            return new ParsedAgentCommand(AgentIntent.INSERT_TRACK_NEXT, query,
+                    Map.of(SELECTION_MODE, SELECTION_SINGLE));
         }
         if (containsAny(lowered, "pause", "暂停", "停一下")) {
             return new ParsedAgentCommand(AgentIntent.PAUSE, normalized);
@@ -66,11 +75,16 @@ public class AgentCommandParser {
         if (containsAny(lowered, "previous", "上一首", "前一首")) {
             return new ParsedAgentCommand(AgentIntent.PREVIOUS, normalized);
         }
-        if (containsAny(lowered, "play", "播放", "来点", "播点")) {
-            return new ParsedAgentCommand(AgentIntent.PLAY, cleanTrackQuery(removePlayWords(normalized)));
+        if (isPlayRequest(normalized, lowered)) {
+            String query = cleanTrackQuery(removePlayWords(normalized));
+            return new ParsedAgentCommand(AgentIntent.PLAY, query,
+                    Map.of(SELECTION_MODE, inferSelectionMode(normalized, query)));
         }
-        if (containsAny(lowered, "search", "搜索", "找", "想听")) {
-            return new ParsedAgentCommand(AgentIntent.SEARCH, cleanTrackQuery(removeSearchWords(normalized)));
+        if (isSearchRequest(normalized, lowered)) {
+            String query = cleanTrackQuery(removeSearchWords(normalized));
+            return new ParsedAgentCommand(AgentIntent.SEARCH, query,
+                    Map.of("resultPresentation", "track_cards",
+                            SELECTION_MODE, inferSelectionMode(normalized, query)));
         }
         return new ParsedAgentCommand(AgentIntent.CHAT, normalized);
     }
@@ -130,7 +144,7 @@ public class AgentCommandParser {
         return new ParsedAgentCommand(
                 AgentIntent.ADD_TRACK_TO_PLAYLIST,
                 trackQuery,
-                Map.of("track", trackQuery, "playlist", playlistName)
+                Map.of("track", trackQuery, "playlist", playlistName, SELECTION_MODE, SELECTION_SINGLE)
         );
     }
 
@@ -148,12 +162,21 @@ public class AgentCommandParser {
     }
 
     private boolean isQueueAppend(String content, String lowered) {
-        return containsAny(lowered, "queue", "队列")
+        return containsAny(lowered, "queue", "队列", "播放队列", "播放列表")
                 && containsAny(lowered, "add", "append", "加入", "添加", "加到", "放进");
     }
 
     private boolean isInsertNext(String content, String lowered) {
         return containsAny(lowered, "next up", "insert next", "play next", "下一首播放", "下首播放", "插到下一首");
+    }
+
+    private boolean isPlayRequest(String content, String lowered) {
+        return containsAny(lowered, "play", "播放", "来点", "播点", "想听")
+                && !isSearchRequest(content, lowered);
+    }
+
+    private boolean isSearchRequest(String content, String lowered) {
+        return containsAny(lowered, "search", "搜索", "搜一下", "搜搜", "查找", "找一下", "找找");
     }
 
     private boolean containsPlaylistWord(String content) {
@@ -191,6 +214,8 @@ public class AgentCommandParser {
                 .replace("添加", "")
                 .replace("加到", "")
                 .replace("放进", "")
+                .replace("播放队列", "")
+                .replace("播放列表", "")
                 .replace("队列", "")
                 .trim();
     }
@@ -210,17 +235,37 @@ public class AgentCommandParser {
                 .replace("播放", "")
                 .replace("来点", "")
                 .replace("播点", "")
+                .replace("想听一下", "")
+                .replace("想听", "")
                 .trim();
     }
 
     private String removeSearchWords(String content) {
         return content
                 .replaceAll("(?i)search", "")
+                .replace("搜索一下", "")
                 .replace("搜索", "")
-                .replace("想听", "")
+                .replace("搜一下", "")
+                .replace("搜搜", "")
+                .replace("查找", "")
                 .replace("找一下", "")
+                .replace("找找", "")
                 .replace("找", "")
                 .trim();
+    }
+
+    private String inferSelectionMode(String content, String query) {
+        String lowered = content.toLowerCase();
+        if (containsAny(lowered,
+                "artist", "songs by", "some songs", "several songs", "歌手", "的歌", "一些", "几首", "多首",
+                "歌单", "推荐", "来点", "播点", "随机", "随便", "合集")) {
+            return SELECTION_COLLECTION;
+        }
+        if (containsAny(lowered,
+                "single", "track", "song", "这首", "那首", "某首", "一首", "单曲", "歌曲", "《")) {
+            return SELECTION_SINGLE;
+        }
+        return query.isBlank() ? SELECTION_COLLECTION : SELECTION_SINGLE;
     }
 
     private String cleanPlaylistName(String value) {

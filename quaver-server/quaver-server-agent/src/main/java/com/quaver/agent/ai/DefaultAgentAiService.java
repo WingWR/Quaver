@@ -5,6 +5,9 @@ import com.quaver.agent.dto.AgentTrackSearchRequest;
 import com.quaver.agent.model.AgentIntent;
 import com.quaver.agent.model.ParsedAgentCommand;
 import com.quaver.common.config.QuaverAiProperties;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,63 @@ public class DefaultAgentAiService implements AgentAiService {
     @Override
     public boolean isConfigured() {
         return deepSeekChatClient.isConfigured();
+    }
+
+    @Override
+    public Optional<ParsedAgentCommand> parseCommand(String userMessage, Map<String, Object> metadata) {
+        String content = userMessage == null ? "" : userMessage.trim();
+        if (content.isBlank() || !isConfigured()) {
+            return Optional.empty();
+        }
+
+        String prompt = """
+                You are Quaver Agent's action planner. Convert the user's message into one safe JSON command.
+                Return only compact JSON with this shape:
+                {"intent":"PLAY","query":"...","arguments":{"selectionMode":"single|collection","track":"...","playlist":"...","name":"...","playbackCommand":"..."}}
+
+                Available backend capabilities:
+                - SEARCH: search tracks and show result cards; no playback or library mutation.
+                - PLAY: start playback from Spotify/cache search results.
+                - PLAY_PLAYLIST: play an existing Quaver playlist by name or id.
+                - PAUSE, NEXT, PREVIOUS: playback controls.
+                - LIST_PLAYLISTS, CREATE_PLAYLIST, RENAME_PLAYLIST, DELETE_PLAYLIST.
+                - ADD_TRACK_TO_PLAYLIST: add exactly one best matching track to a playlist unless the user explicitly asks for multiple.
+                - ADD_TRACK_TO_QUEUE: add exactly one best matching track to the queue.
+                - INSERT_TRACK_NEXT: add exactly one best matching track as next up.
+                - CHAT: music conversation only, no tool call.
+
+                Planning rules:
+                - Use SEARCH when the user says search/find/show/listen candidates and does not ask to play now.
+                - Use PLAY when the user asks to hear/play/listen now.
+                - If the user names a specific song, set selectionMode to "single"; the executor will use the top search result only.
+                - If the user asks for songs by an artist, genre, mood, scene, or says "some songs", set selectionMode to "collection".
+                - Never turn ADD_TRACK_TO_PLAYLIST into PLAY or queue mutation.
+                - In Chinese, "播放列表" or "播放队列" usually means the current queue; use ADD_TRACK_TO_QUEUE unless a named 歌单 is explicit.
+                - Never call more than one capability. Pick the primary safe action.
+                - Keep query short and searchable. Preserve artist names and song titles.
+                - If unsure whether a target playlist exists, still extract its name and let the executor resolve it.
+                - If the user is only chatting about music, use CHAT.
+                """;
+
+        String input = """
+                User message: %s
+                UI metadata: %s
+                """.formatted(quote(content), quote(String.valueOf(metadata == null ? Map.of() : metadata)));
+
+        try {
+            String response = deepSeekChatClient.generateText(aiProperties.getAgentModel(), prompt, input);
+            JsonNode node = deepSeekChatClient.readJson(response);
+            AgentIntent intent = parseIntent(node.path("intent").asText(""));
+            if (intent == null) {
+                return Optional.empty();
+            }
+
+            String query = node.path("query").asText("").trim();
+            Map<String, String> arguments = parseArguments(node.path("arguments"));
+            return Optional.of(new ParsedAgentCommand(intent, query, arguments));
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
     }
 
     @Override
@@ -60,7 +120,7 @@ public class DefaultAgentAiService implements AgentAiService {
     @Override
     public String composeAgentReply(String userMessage, ParsedAgentCommand command, String deterministicReply, String model) {
         if (!isConfigured()) {
-            throw new IllegalStateException("DeepSeek API key is not configured. Fill QUAVER_AI_API_KEY in quaver-server/.env and restart the backend.");
+            return fallbackReply(deterministicReply);
         }
 
         try {
@@ -70,13 +130,11 @@ public class DefaultAgentAiService implements AgentAiService {
                     replyInput(userMessage, command, deterministicReply)
             );
             if (response == null || response.isBlank()) {
-                throw new IllegalStateException("DeepSeek returned an empty Agent response.");
+                return fallbackReply(deterministicReply);
             }
             return response;
-        } catch (RuntimeException exception) {
-            throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("DeepSeek Agent request failed.", exception);
+            return fallbackReply(deterministicReply);
         }
     }
 
@@ -84,7 +142,9 @@ public class DefaultAgentAiService implements AgentAiService {
     public String streamAgentReply(String userMessage, ParsedAgentCommand command, String deterministicReply, String model,
                                    Consumer<String> onDelta) {
         if (!isConfigured()) {
-            throw new IllegalStateException("DeepSeek API key is not configured. Fill QUAVER_AI_API_KEY in quaver-server/.env and restart the backend.");
+            String fallback = fallbackReply(deterministicReply);
+            onDelta.accept(fallback);
+            return fallback;
         }
 
         AtomicBoolean emitted = new AtomicBoolean(false);
@@ -103,13 +163,19 @@ public class DefaultAgentAiService implements AgentAiService {
                     trackingConsumer
             );
             if (response == null || response.isBlank()) {
-                throw new IllegalStateException("DeepSeek returned an empty Agent response.");
+                String fallback = fallbackReply(deterministicReply);
+                if (!emitted.get()) {
+                    onDelta.accept(fallback);
+                }
+                return fallback;
             }
             return response;
-        } catch (RuntimeException exception) {
-            throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("DeepSeek Agent streaming request failed.", exception);
+            String fallback = fallbackReply(deterministicReply);
+            if (!emitted.get()) {
+                onDelta.accept(fallback);
+            }
+            return fallback;
         }
     }
 
@@ -195,6 +261,49 @@ public class DefaultAgentAiService implements AgentAiService {
         return requestedModel == null || requestedModel.isBlank()
                 ? aiProperties.getAgentModel()
                 : requestedModel;
+    }
+
+    private String fallbackReply(String deterministicReply) {
+        if (deterministicReply == null || deterministicReply.isBlank()) {
+            return "Agent action completed, but the AI reply service is temporarily unavailable.";
+        }
+        return deterministicReply;
+    }
+
+    private AgentIntent parseIntent(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value.trim()
+                .replace('-', '_')
+                .replace(' ', '_')
+                .toUpperCase();
+        try {
+            return AgentIntent.valueOf(normalized);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private Map<String, String> parseArguments(JsonNode argumentsNode) {
+        if (argumentsNode == null || !argumentsNode.isObject()) {
+            return Map.of();
+        }
+
+        Map<String, String> arguments = new LinkedHashMap<>();
+        argumentsNode.fields().forEachRemaining(entry -> {
+            JsonNode value = entry.getValue();
+            if (value == null || value.isNull()) {
+                return;
+            }
+
+            String textValue = value.isTextual() ? value.asText() : value.toString();
+            if (!textValue.isBlank()) {
+                arguments.put(entry.getKey(), textValue.trim());
+            }
+        });
+        return arguments;
     }
 
     private String quote(String value) {

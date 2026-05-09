@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { usePlaybackControllerRuntime } from "../../../hooks/usePlaybackControllerRuntime";
 import { useQuaverStore } from "../../../store/useQuaverStore";
+import type { Track } from "../../../types/music";
 import type { AgentMessage } from "../api/types";
 import { useAgentConversationRuntime } from "../hooks/useAgentConversationRuntime";
 
@@ -68,8 +70,85 @@ function metaTextStyle(role: AgentMessage["role"]) {
 
   return "text-brand-grey";
 }
+
+interface AgentTrackCards {
+  type: "track_list";
+  title?: string;
+  tracks: Track[];
+}
+
+function readTrackCards(metadata?: Record<string, unknown>): AgentTrackCards | null {
+  const cards = metadata?.cards;
+  if (!cards || typeof cards !== "object") {
+    return null;
+  }
+
+  const candidate = cards as Partial<AgentTrackCards>;
+  if (candidate.type !== "track_list" || !Array.isArray(candidate.tracks)) {
+    return null;
+  }
+
+  return {
+    type: "track_list",
+    title: typeof candidate.title === "string" ? candidate.title : "Tracks",
+    tracks: candidate.tracks,
+  };
+}
+
+function AgentTrackCardList({
+  cards,
+  onPlay,
+}: {
+  cards: AgentTrackCards;
+  onPlay: (tracks: Track[], index: number) => void;
+}) {
+  if (!cards.tracks.length) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded-[18px] border border-white/[0.07] bg-black/20 p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand-grey">
+          {cards.title}
+        </p>
+        <span className="text-xs text-white/45">{cards.tracks.length} tracks</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {cards.tracks.slice(0, 8).map((track, index) => (
+          <button
+            key={`${track.id}-${index}`}
+            type="button"
+            onClick={() => onPlay(cards.tracks, index)}
+            className="group flex min-w-0 items-center gap-3 rounded-2xl bg-white/[0.045] px-3 py-2 text-left transition hover:bg-white/[0.09]"
+          >
+            {track.artwork ? (
+              <img
+                src={track.artwork}
+                alt={track.title}
+                className="h-11 w-11 shrink-0 rounded-xl object-cover"
+              />
+            ) : (
+              <div className="h-11 w-11 shrink-0 rounded-xl bg-[linear-gradient(135deg,rgba(52,211,153,0.4),rgba(56,189,248,0.22))]" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-white/90 group-hover:text-white">
+                {track.title}
+              </p>
+              <p className="truncate text-xs text-brand-grey">
+                {track.artist}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AgentWorkspacePanel() {
   const isAgentWorkspace = useQuaverStore((state) => state.workspaceView === "agent");
+  const { playTrackList } = usePlaybackControllerRuntime();
   const {
     messages,
     operations,
@@ -164,40 +243,52 @@ export default function AgentWorkspacePanel() {
           ) : null}
 
           {messages.length ? (
-            messages.map((message) => (
-              <motion.article
-                key={message.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex ${bubbleWrapperStyle(message.role)}`}
-              >
-                <div className={`flex w-full flex-col ${bubbleAlignment(message.role)}`}>
-                  <div className={`w-full ${bubbleWidth(message.role)}`}>
-                    <div className={`rounded-[20px] px-4 py-3 ${roleStyle(message.role)}`}>
-                      <p
-                        className={`whitespace-pre-wrap text-sm leading-7 ${
-                          message.role === "user" ? "text-black/88" : "text-white/88"
+            messages.map((message) => {
+              const cards = readTrackCards(message.metadata);
+
+              return (
+                <motion.article
+                  key={message.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex ${bubbleWrapperStyle(message.role)}`}
+                >
+                  <div className={`flex w-full flex-col ${bubbleAlignment(message.role)}`}>
+                    <div className={`w-full ${cards ? "max-w-[min(82%,44rem)]" : bubbleWidth(message.role)}`}>
+                      <div className={`rounded-[20px] px-4 py-3 ${roleStyle(message.role)}`}>
+                        <p
+                          className={`whitespace-pre-wrap text-sm leading-7 ${
+                            message.role === "user" ? "text-black/88" : "text-white/88"
+                          }`}
+                        >
+                          {message.content || (message.status === "running" ? "..." : "")}
+                        </p>
+                        {cards ? (
+                          <AgentTrackCardList
+                            cards={cards}
+                            onPlay={(tracks, index) =>
+                              void playTrackList(tracks, index, `agent-card-${tracks[index]?.id ?? index}`)
+                            }
+                          />
+                        ) : null}
+                      </div>
+
+                      <div
+                        className={`mt-2 px-1 text-xs ${metaTextStyle(message.role)} ${
+                          message.role === "user"
+                            ? "text-right"
+                            : message.role === "system"
+                              ? "text-center"
+                              : "text-left"
                         }`}
                       >
-                        {message.content || (message.status === "running" ? "..." : "")}
-                      </p>
-                    </div>
-
-                    <div
-                      className={`mt-2 px-1 text-xs ${metaTextStyle(message.role)} ${
-                        message.role === "user"
-                          ? "text-right"
-                          : message.role === "system"
-                            ? "text-center"
-                            : "text-left"
-                      }`}
-                    >
-                      {formatTimestamp(message.createdAt)}
+                        {formatTimestamp(message.createdAt)}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </motion.article>
-            ))
+                </motion.article>
+              );
+            })
           ) : (
             <div className="flex min-h-full items-center justify-center py-8">
               <div className="max-w-md rounded-[20px] bg-white/[0.04] px-5 py-4 text-center">

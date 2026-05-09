@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatBackendError } from "../../../api/http";
 import { appConfig } from "../../../config/app";
+import { usePlaybackControllerRuntime } from "../../../hooks/usePlaybackControllerRuntime";
 import { useQuaverStore } from "../../../store/useQuaverStore";
 import { useUiStore } from "../../../store/useUiStore";
 import { fetchAgentRuntimeStatus, getOrCreateAgentConversation, sendAgentMessageStream } from "../api/client";
-import type { LibraryMutationResponse } from "../../library/api/types";
 import type {
   AgentConversation,
   AgentConversationPayload,
@@ -75,9 +75,9 @@ export function useAgentConversationRuntime(isActive: boolean) {
   const setAgentDraft = useQuaverStore((state) => state.setAgentDraft);
   const selectedPlaylistId = useQuaverStore((state) => state.selectedPlaylistId);
   const queue = useQuaverStore((state) => state.queue);
-  const syncPlayback = useQuaverStore((state) => state.syncPlayback);
   const replaceBackendPlaylists = useQuaverStore((state) => state.replaceBackendPlaylists);
   const pushNotice = useUiStore((state) => state.pushNotice);
+  const { applyAgentPlaybackMutation } = usePlaybackControllerRuntime();
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [operations, setOperations] = useState<AgentOperation[]>([]);
@@ -151,13 +151,17 @@ export function useAgentConversationRuntime(isActive: boolean) {
     }
   }
 
-  function applyLibraryMutation(mutation?: LibraryMutationResponse) {
+  async function applyLibraryMutation(response: SendAgentMessageResponse) {
+    const mutation = response.libraryMutation;
     if (!mutation) {
       return;
     }
 
     if (mutation.playback) {
-      syncPlayback(mutation.playback);
+      await applyAgentPlaybackMutation(
+        mutation.playback,
+        readPlaybackCommand(response.assistantMessage?.metadata),
+      );
     }
     if (mutation.playlists) {
       replaceBackendPlaylists(mutation.playlists, mutation.selectedPlaylistId);
@@ -246,7 +250,7 @@ export function useAgentConversationRuntime(isActive: boolean) {
           }
           const response = event.response;
           setConversation(response.conversation);
-          applyLibraryMutation(response.libraryMutation);
+          void applyLibraryMutation(response);
           setMessages((currentMessages) =>
             mergeMessages(currentMessages, optimisticUserMessage.id, response, streamingAssistantMessageId),
           );
@@ -290,4 +294,9 @@ export function useAgentConversationRuntime(isActive: boolean) {
     submitDraft,
     model: conversation?.model ?? appConfig.agent.chatModel,
   };
+}
+
+function readPlaybackCommand(metadata?: Record<string, unknown>) {
+  const value = metadata?.playbackCommand;
+  return typeof value === "string" ? value : undefined;
 }

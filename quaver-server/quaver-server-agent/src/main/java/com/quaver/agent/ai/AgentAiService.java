@@ -2,11 +2,15 @@ package com.quaver.agent.ai;
 
 import com.quaver.agent.dto.AgentTrackSearchRequest;
 import com.quaver.agent.model.ParsedAgentCommand;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 public interface AgentAiService {
 
     boolean isConfigured();
+
+    Optional<ParsedAgentCommand> parseCommand(String userMessage, Map<String, Object> metadata);
 
     String normalizeSearchQuery(AgentTrackSearchRequest request);
 
