@@ -1,45 +1,14 @@
 import { startTransition, useEffect } from "react";
-import { formatBackendError, isBackendRateLimitError } from "../api/http";
+import { formatBackendError } from "../api/http";
 import {
   consumeSpotifyBridgeRedirect,
   fetchSpotifyAuthStatus,
-  fetchSpotifyPlaybackState,
 } from "../features/spotify/api/client";
 import { useQuaverStore } from "../store/useQuaverStore";
-import type { Track } from "../types/music";
 
 const SPOTIFY_UNAVAILABLE_MESSAGE =
   "Spotify bridge is not ready. Connect Spotify after the backend is running.";
 const REQUIRED_SPOTIFY_SCOPES = ["streaming", "playlist-read-collaborative"];
-
-function sameTrack(left?: Track, right?: Track) {
-  if (!left || !right) {
-    return false;
-  }
-
-  return (left.spotifyId ?? left.id) === (right.spotifyId ?? right.id);
-}
-
-function syncSpotifyPlaybackSnapshot(playback: Awaited<ReturnType<typeof fetchSpotifyPlaybackState>>) {
-  const { queue, currentTrackIndex } = useQuaverStore.getState();
-  const spotifyCurrentTrack = playback.queue[playback.currentTrackIndex] ?? playback.queue[0];
-  const nextQueue =
-    spotifyCurrentTrack && queue.some((track) => sameTrack(track, spotifyCurrentTrack))
-      ? queue
-      : playback.queue.length
-        ? playback.queue
-        : queue;
-  const nextCurrentTrackIndex =
-    spotifyCurrentTrack && nextQueue.length
-      ? Math.max(0, nextQueue.findIndex((track) => sameTrack(track, spotifyCurrentTrack)))
-      : currentTrackIndex;
-
-  useQuaverStore.getState().syncPlayback({
-    ...playback,
-    queue: nextQueue,
-    currentTrackIndex: nextCurrentTrackIndex,
-  });
-}
 
 function parseSpotifyError(error: unknown) {
   const message = formatBackendError(error, SPOTIFY_UNAVAILABLE_MESSAGE);
@@ -54,37 +23,10 @@ function parseSpotifyError(error: unknown) {
   return {
     message,
     requiresPremium: false,
-    rateLimited: isBackendRateLimitError(error),
   };
 }
 
-async function syncSpotifyPlaybackState() {
-  const { setSpotifyState } = useQuaverStore.getState();
-
-  try {
-    const playback = await fetchSpotifyPlaybackState();
-    syncSpotifyPlaybackSnapshot(playback);
-    setSpotifyState({
-      error: null,
-      requiresPremium: false,
-    });
-  } catch (error) {
-    const parsed = parseSpotifyError(error);
-    if (parsed.rateLimited) {
-      setSpotifyState({
-        requiresPremium: false,
-      });
-      return;
-    }
-    setSpotifyState({
-      error: parsed.message,
-      requiresPremium: parsed.requiresPremium,
-    });
-  }
-}
-
 export function useSpotifyBootstrap() {
-  const spotify = useQuaverStore((state) => state.spotify);
   const setSpotifyState = useQuaverStore((state) => state.setSpotifyState);
 
   useEffect(() => {
@@ -160,18 +102,4 @@ export function useSpotifyBootstrap() {
 
     return () => controller.abort();
   }, [setSpotifyState]);
-
-  useEffect(() => {
-    if (!spotify.isAuthenticated) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      syncSpotifyPlaybackState();
-    }, 30000);
-
-    syncSpotifyPlaybackState();
-
-    return () => window.clearInterval(timer);
-  }, [spotify.isAuthenticated]);
 }

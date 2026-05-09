@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatBackendError } from "../../../api/http";
 import { appConfig } from "../../../config/app";
+import { usePlaybackControllerRuntime } from "../../../hooks/usePlaybackControllerRuntime";
+import { updateBackendPlaybackState } from "../../library/api/client";
 import { useQuaverStore } from "../../../store/useQuaverStore";
 import { useUiStore } from "../../../store/useUiStore";
 import { fetchAgentRuntimeStatus, getOrCreateAgentConversation, sendAgentMessageStream } from "../api/client";
-import type { LibraryMutationResponse } from "../../library/api/types";
 import type {
   AgentConversation,
   AgentConversationPayload,
@@ -75,9 +76,15 @@ export function useAgentConversationRuntime(isActive: boolean) {
   const setAgentDraft = useQuaverStore((state) => state.setAgentDraft);
   const selectedPlaylistId = useQuaverStore((state) => state.selectedPlaylistId);
   const queue = useQuaverStore((state) => state.queue);
-  const syncPlayback = useQuaverStore((state) => state.syncPlayback);
+  const currentTrackIndex = useQuaverStore((state) => state.currentTrackIndex);
+  const isPlaying = useQuaverStore((state) => state.isPlaying);
+  const progress = useQuaverStore((state) => state.progress);
+  const playbackSource = useQuaverStore((state) => state.playbackSource);
+  const isShuffleEnabled = useQuaverStore((state) => state.isShuffleEnabled);
+  const repeatMode = useQuaverStore((state) => state.repeatMode);
   const replaceBackendPlaylists = useQuaverStore((state) => state.replaceBackendPlaylists);
   const pushNotice = useUiStore((state) => state.pushNotice);
+  const { applyAgentPlaybackMutation } = usePlaybackControllerRuntime();
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [operations, setOperations] = useState<AgentOperation[]>([]);
@@ -151,16 +158,27 @@ export function useAgentConversationRuntime(isActive: boolean) {
     }
   }
 
-  function applyLibraryMutation(mutation?: LibraryMutationResponse) {
+  async function applyLibraryMutation(response: SendAgentMessageResponse) {
+    const mutation = response.libraryMutation;
     if (!mutation) {
       return;
     }
 
-    if (mutation.playback) {
-      syncPlayback(mutation.playback);
-    }
+    const assistantMetadata = response.assistantMessage?.metadata;
+    const intent = readAgentIntent(assistantMetadata);
     if (mutation.playlists) {
-      replaceBackendPlaylists(mutation.playlists, mutation.selectedPlaylistId);
+      replaceBackendPlaylists(
+        mutation.playlists,
+        intent === "CREATE_PLAYLIST" ? undefined : mutation.selectedPlaylistId,
+      );
+    }
+
+    const playbackCommand = readPlaybackCommand(assistantMetadata);
+    if (mutation.playback && playbackCommand) {
+      await applyAgentPlaybackMutation(
+        mutation.playback,
+        playbackCommand,
+      );
     }
   }
 
@@ -188,11 +206,38 @@ export function useAgentConversationRuntime(isActive: boolean) {
       setAgentDraft("");
       let streamingAssistantMessageId: string | undefined;
 
+      try {
+        await updateBackendPlaybackState({
+          queue,
+          currentTrackIndex,
+          isPlaying,
+          progress,
+          playbackSource,
+          isShuffleEnabled,
+          repeatMode,
+        });
+      } catch (error) {
+        pushNotice({
+          message: formatBackendError(
+            error,
+            "Agent may see an older playback queue because the current queue could not be synced first.",
+          ),
+          variant: "warning",
+          dedupeKey: "agent-playback-context-sync",
+        });
+      }
+
       await sendAgentMessageStream(activeConversationPayload.conversation.id, {
         content,
         metadata: {
           selectedPlaylistId,
           queueTrackIds: queue.map((track) => track.id),
+          currentTrackIndex,
+          isPlaying,
+          progress,
+          playbackSource,
+          isShuffleEnabled,
+          repeatMode,
         },
       }, {
         onUserMessage: (event) => {
@@ -246,7 +291,7 @@ export function useAgentConversationRuntime(isActive: boolean) {
           }
           const response = event.response;
           setConversation(response.conversation);
-          applyLibraryMutation(response.libraryMutation);
+          void applyLibraryMutation(response);
           setMessages((currentMessages) =>
             mergeMessages(currentMessages, optimisticUserMessage.id, response, streamingAssistantMessageId),
           );
@@ -290,4 +335,14 @@ export function useAgentConversationRuntime(isActive: boolean) {
     submitDraft,
     model: conversation?.model ?? appConfig.agent.chatModel,
   };
+}
+
+function readPlaybackCommand(metadata?: Record<string, unknown>) {
+  const value = metadata?.playbackCommand;
+  return typeof value === "string" ? value : undefined;
+}
+
+function readAgentIntent(metadata?: Record<string, unknown>) {
+  const value = metadata?.intent;
+  return typeof value === "string" ? value : undefined;
 }

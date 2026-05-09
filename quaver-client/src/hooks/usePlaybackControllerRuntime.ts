@@ -2,21 +2,17 @@ import { useRef } from "react";
 import { formatBackendError, getBackendRetryAfterSeconds, isBackendRateLimitError } from "../api/http";
 import {
   addTrackToBackendPlaylist,
-  appendTrackToBackendQueue,
-  insertTrackNextInBackendQueue,
   startBackendPlayback,
   updateBackendPlaybackState,
 } from "../features/library/api/client";
+import type { BackendPlaybackState } from "../features/library/api/types";
 import {
-  addTrackToSpotifyQueue,
   beginSpotifyBridgeAuthorization,
   pauseSpotifyPlayback,
   seekSpotifyPlayback,
   setSpotifyRepeatMode,
   setSpotifyShuffle,
   setSpotifyVolume,
-  skipToNextSpotifyTrack,
-  skipToPreviousSpotifyTrack,
   startSpotifyPlayback,
 } from "../features/spotify/api/client";
 import type { SpotifyPlaybackState } from "../features/spotify/api/types";
@@ -33,6 +29,7 @@ export function usePlaybackControllerRuntime() {
   const setVolume = useQuaverStore((state) => state.setVolume);
   const syncPlayback = useQuaverStore((state) => state.syncPlayback);
   const addTrackToPlaylistLocal = useQuaverStore((state) => state.addTrackToPlaylist);
+  const replaceBackendPlaylists = useQuaverStore((state) => state.replaceBackendPlaylists);
   const togglePlaybackLocal = useQuaverStore((state) => state.togglePlayback);
   const playNextLocal = useQuaverStore((state) => state.playNext);
   const playPreviousLocal = useQuaverStore((state) => state.playPrevious);
@@ -43,7 +40,6 @@ export function usePlaybackControllerRuntime() {
   const queue = useQuaverStore((state) => state.queue);
   const currentTrackIndex = useQuaverStore((state) => state.currentTrackIndex);
   const isPlaying = useQuaverStore((state) => state.isPlaying);
-  const progress = useQuaverStore((state) => state.progress);
   const playbackSource = useQuaverStore((state) => state.playbackSource);
   const isShuffleEnabled = useQuaverStore((state) => state.isShuffleEnabled);
   const repeatMode = useQuaverStore((state) => state.repeatMode);
@@ -87,6 +83,7 @@ export function usePlaybackControllerRuntime() {
     const state = useQuaverStore.getState();
 
     return {
+      queue: state.queue,
       currentTrackIndex: state.currentTrackIndex,
       isPlaying: state.isPlaying,
       progress: state.progress,
@@ -138,28 +135,8 @@ export function usePlaybackControllerRuntime() {
     }
   }
 
-  function syncSpotifyPlaybackResponse(
-    playback: SpotifyPlaybackState,
-    preferredQueue?: Track[],
-  ) {
-    const playbackCurrentTrack = playback.queue[playback.currentTrackIndex] ?? playback.queue[0];
-    const currentStateQueue = useQuaverStore.getState().queue;
-    const currentStateIndex = useQuaverStore.getState().currentTrackIndex;
-    const queueCandidates = [preferredQueue, currentStateQueue, playback.queue].filter(
-      (candidate): candidate is Track[] => Boolean(candidate?.length),
-    );
-    const nextQueue =
-      queueCandidates.find((candidate) =>
-        playbackCurrentTrack ? candidate.some((track) => sameTrack(track, playbackCurrentTrack)) : true,
-      ) ?? [];
-    const nextCurrentTrackIndex =
-      playbackCurrentTrack && nextQueue.length
-        ? Math.max(0, nextQueue.findIndex((track) => sameTrack(track, playbackCurrentTrack)))
-        : currentStateIndex;
-
+  function syncSpotifyTransportResponse(playback: SpotifyPlaybackState) {
     syncPlayback({
-      queue: nextQueue.length ? nextQueue : playback.queue,
-      currentTrackIndex: nextCurrentTrackIndex,
       isPlaying: playback.isPlaying,
       progress: playback.progress,
       volume: playback.volume,
@@ -213,32 +190,16 @@ export function usePlaybackControllerRuntime() {
     try {
       if (isPlaying) {
         setIsPlaying(false);
-        syncSpotifyPlaybackResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+        syncSpotifyTransportResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+        await syncBackendPlaybackSnapshot("playback-toggle");
         return;
       }
 
       const currentTrack = queue[currentTrackIndex];
       if (currentTrack?.spotifyUri) {
         setIsPlaying(true);
-        try {
-          syncSpotifyPlaybackResponse(
-            await startSpotifyPlayback({
-              deviceId: spotifyDeviceId(),
-            }),
-            queue,
-          );
-        } catch (resumeError) {
-          const playableQueue = queue.filter((track) => track.spotifyUri);
-          syncSpotifyPlaybackResponse(
-            await startSpotifyPlayback({
-              deviceId: spotifyDeviceId(),
-              uris: playableQueue.map((track) => track.spotifyUri).filter((uri): uri is string => Boolean(uri)),
-              offsetPosition: Math.max(0, playableQueue.findIndex((track) => sameTrack(track, currentTrack))),
-              positionMs: Math.max(0, Math.round(progress * 1000)),
-            }),
-            playableQueue.length ? playableQueue : [currentTrack],
-          );
-        }
+        await syncBackendPlaybackSnapshot("playback-toggle");
+        await restartSpotifyPlaybackFromCurrentQueue("spotify-toggle");
       }
     } catch (error) {
       setIsPlaying(isPlaying);
@@ -253,11 +214,9 @@ export function usePlaybackControllerRuntime() {
       return;
     }
 
-    try {
-      syncSpotifyPlaybackResponse(await skipToNextSpotifyTrack(spotifyDeviceId()));
-    } catch (error) {
-      warnSpotifyPlayback(error, "spotify-next");
-    }
+    playNextLocal();
+    await syncBackendPlaybackSnapshot("playback-next");
+    await restartSpotifyPlaybackFromCurrentQueue("spotify-next", true);
   }
 
   async function playPrevious() {
@@ -267,11 +226,9 @@ export function usePlaybackControllerRuntime() {
       return;
     }
 
-    try {
-      syncSpotifyPlaybackResponse(await skipToPreviousSpotifyTrack(spotifyDeviceId()));
-    } catch (error) {
-      warnSpotifyPlayback(error, "spotify-previous");
-    }
+    playPreviousLocal();
+    await syncBackendPlaybackSnapshot("playback-previous");
+    await restartSpotifyPlaybackFromCurrentQueue("spotify-previous");
   }
 
   function seek(nextProgress: number) {
@@ -305,7 +262,8 @@ export function usePlaybackControllerRuntime() {
       try {
         const playback = await seekSpotifyPlayback(Math.round(nextProgress * 1000), spotifyDeviceId());
         if (requestId === seekSequenceRef.current) {
-          syncSpotifyPlaybackResponse(playback);
+          syncSpotifyTransportResponse(playback);
+          await syncBackendPlaybackSnapshot("playback-seek");
         }
       } catch (error) {
         if (requestId === seekSequenceRef.current) {
@@ -323,8 +281,11 @@ export function usePlaybackControllerRuntime() {
       return;
     }
 
+    await syncBackendPlaybackSnapshot("playback-volume");
+
     try {
-      syncSpotifyPlaybackResponse(await setSpotifyVolume(volume, spotifyDeviceId()));
+      syncSpotifyTransportResponse(await setSpotifyVolume(volume, spotifyDeviceId()));
+      await syncBackendPlaybackSnapshot("playback-volume");
     } catch (error) {
       warnSpotifyPlayback(error, "spotify-volume");
     }
@@ -360,21 +321,130 @@ export function usePlaybackControllerRuntime() {
     }
 
     try {
-      syncSpotifyPlaybackResponse(
-        await startSpotifyPlayback({
-          deviceId: spotifyDeviceId(),
-          uris: spotifyUris,
-          offsetPosition: Math.max(
-            0,
-            playableQueue.findIndex((track) => sameTrack(track, startTrack)),
-          ),
-          positionMs: 0,
-        }),
-        tracks,
-      );
+      setQueue(tracks, startIndex, "spotify");
+      await syncBackendPlaybackSnapshot(`playback-${dedupeKey}`);
+      await restartSpotifyPlaybackFromCurrentQueue(`spotify-${dedupeKey}`);
     } catch (error) {
       warnSpotifyPlayback(error, `spotify-${dedupeKey}`);
     }
+  }
+
+  async function restartSpotifyPlaybackFromCurrentQueue(
+    dedupeKey: string,
+    pauseWhenStopped = false,
+  ) {
+    const state = useQuaverStore.getState();
+    const currentTrack = state.queue[state.currentTrackIndex] ?? state.queue[0];
+    const playableQueue = state.queue.filter((track) => track.spotifyUri);
+
+    if (!state.isPlaying) {
+      if (pauseWhenStopped) {
+        try {
+          syncSpotifyTransportResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+        } catch (error) {
+          warnSpotifyPlayback(error, dedupeKey);
+        }
+      }
+      return;
+    }
+
+    if (!currentTrack?.spotifyUri || !playableQueue.length) {
+      try {
+        syncSpotifyTransportResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+      } catch (error) {
+        warnSpotifyPlayback(error, dedupeKey);
+      }
+      return;
+    }
+
+    try {
+      syncSpotifyTransportResponse(
+        await startSpotifyPlayback({
+          deviceId: spotifyDeviceId(),
+          uris: playableQueue
+            .map((track) => track.spotifyUri)
+            .filter((uri): uri is string => Boolean(uri)),
+          offsetPosition: Math.max(
+            0,
+            playableQueue.findIndex((track) => sameTrack(track, currentTrack)),
+          ),
+          positionMs: Math.max(0, Math.round(state.progress * 1000)),
+        }),
+      );
+    } catch (error) {
+      warnSpotifyPlayback(error, dedupeKey);
+    }
+  }
+
+  async function applyAgentPlaybackMutation(
+    playback: BackendPlaybackState,
+    playbackCommand = "sync",
+  ) {
+    if (playbackCommand === "queue_clear") {
+      syncPlayback(playback);
+      if (playback.playbackSource === "spotify" && spotify.isAuthenticated) {
+        try {
+          syncSpotifyTransportResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+        } catch (error) {
+          warnSpotifyPlayback(error, "spotify-agent-queue-clear");
+        }
+      }
+      return;
+    }
+
+    if (!playback.queue.length || playback.playbackSource !== "spotify") {
+      syncPlayback(playback);
+      return;
+    }
+
+    if (playbackCommand === "pause") {
+      syncPlayback(playback);
+      if (!spotify.isAuthenticated) {
+        return;
+      }
+
+      try {
+        syncSpotifyTransportResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+      } catch (error) {
+        warnSpotifyPlayback(error, "spotify-agent-pause");
+      }
+      return;
+    }
+
+    if (playbackCommand === "start" || playbackCommand === "seek_to_index") {
+      await playTrackList(
+        playback.queue,
+        playback.currentTrackIndex,
+        `agent-${playbackCommand}`,
+      );
+      return;
+    }
+
+    if (playbackCommand === "queue_insert_next") {
+      syncPlayback(playback);
+      if (spotify.isAuthenticated) {
+        await restartSpotifyPlaybackFromCurrentQueue(`spotify-agent-${playbackCommand}`);
+      }
+      return;
+    }
+
+    if (playbackCommand === "queue_remove") {
+      syncPlayback(playback);
+      if (spotify.isAuthenticated) {
+        await restartSpotifyPlaybackFromCurrentQueue(`spotify-agent-${playbackCommand}`);
+      }
+      return;
+    }
+
+    if (playbackCommand === "queue_append") {
+      syncPlayback(playback);
+      if (spotify.isAuthenticated) {
+        await restartSpotifyPlaybackFromCurrentQueue(`spotify-agent-${playbackCommand}`);
+      }
+      return;
+    }
+
+    syncPlayback(playback);
   }
 
   async function playQueueTrack(track: Track, index: number) {
@@ -400,72 +470,79 @@ export function usePlaybackControllerRuntime() {
   }
 
   async function toggleShuffleMode() {
+    toggleShuffleLocal();
+    await syncBackendPlaybackSnapshot("playback-shuffle");
+
     if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
-      toggleShuffleLocal();
-      await syncBackendPlaybackSnapshot("playback-shuffle");
       return;
     }
 
-    const nextValue = !isShuffleEnabled;
+    const nextValue = useQuaverStore.getState().isShuffleEnabled;
     try {
-      syncSpotifyPlaybackResponse(await setSpotifyShuffle(nextValue, spotifyDeviceId()));
+      syncSpotifyTransportResponse(await setSpotifyShuffle(nextValue, spotifyDeviceId()));
+      await syncBackendPlaybackSnapshot("playback-shuffle");
     } catch (error) {
       warnSpotifyPlayback(error, "spotify-shuffle");
     }
   }
 
   async function cycleRepeatMode() {
+    cycleRepeatModeLocal();
+    await syncBackendPlaybackSnapshot("playback-repeat");
+
     if (playbackSource !== "spotify" || !spotify.isAuthenticated) {
-      cycleRepeatModeLocal();
-      await syncBackendPlaybackSnapshot("playback-repeat");
       return;
     }
 
-    const nextMode =
-      repeatMode === "off" ? "context" : repeatMode === "context" ? "track" : "off";
+    const nextMode = useQuaverStore.getState().repeatMode;
 
     try {
-      syncSpotifyPlaybackResponse(await setSpotifyRepeatMode(nextMode, spotifyDeviceId()));
+      syncSpotifyTransportResponse(await setSpotifyRepeatMode(nextMode, spotifyDeviceId()));
+      await syncBackendPlaybackSnapshot("playback-repeat");
     } catch (error) {
       warnSpotifyPlayback(error, "spotify-repeat");
     }
   }
 
   async function queueTrackNext(track: Track) {
-    const existingIndex = getQueueIndex(track);
-    insertTrackNextLocal(track);
-
-    if (playbackSource === "backend") {
-      try {
-        const response = await insertTrackNextInBackendQueue({
-          trackId: track.id,
-        });
-        if (response.playback) {
-          syncPlayback(response.playback);
-        }
-      } catch (error) {
-        pushNotice({
-          message: formatBackendError(
-            error,
-            "Queue backend is unavailable. The track was only inserted locally.",
-          ),
-          variant: "warning",
-          dedupeKey: `queue-next-${track.id}`,
-        });
-      }
+    const beforeState = useQuaverStore.getState();
+    const beforeCurrentTrack = beforeState.queue[beforeState.currentTrackIndex];
+    if (sameTrack(beforeCurrentTrack, track)) {
+      return;
     }
 
+    insertTrackNextLocal(track);
+    await syncBackendPlaybackSnapshot(`queue-next-${track.id}`);
+
+    const nextState = useQuaverStore.getState();
     if (
-      existingIndex === -1 &&
-      playbackSource === "spotify" &&
+      nextState.playbackSource === "spotify" &&
       spotify.isAuthenticated &&
       track.spotifyUri
     ) {
-      try {
-        syncSpotifyPlaybackResponse(await addTrackToSpotifyQueue(track.spotifyUri, spotifyDeviceId()));
-      } catch (error) {
-        warnSpotifyPlayback(error, `spotify-queue-next-${track.id}`);
-      }
+      await restartSpotifyPlaybackFromCurrentQueue(`spotify-queue-next-${track.id}`);
+    }
+  }
+
+  async function moveQueueTrackToFront(track: Track) {
+    const state = useQuaverStore.getState();
+    const currentTrack = state.queue[state.currentTrackIndex];
+    const targetIndex = state.queue.findIndex((queuedTrack) => sameTrack(queuedTrack, track));
+
+    if (targetIndex < 0 || sameTrack(currentTrack, track)) {
+      return;
+    }
+
+    insertTrackNextLocal(track);
+    await syncBackendPlaybackSnapshot(`queue-move-front-${track.id}`);
+
+    const nextState = useQuaverStore.getState();
+    if (
+      nextState.playbackSource === "spotify" &&
+      spotify.isAuthenticated &&
+      nextState.queue[nextState.currentTrackIndex]?.spotifyUri
+    ) {
+      await restartSpotifyPlaybackFromCurrentQueue(`spotify-queue-move-front-${track.id}`);
     }
   }
 
@@ -474,46 +551,27 @@ export function usePlaybackControllerRuntime() {
       return;
     }
 
-    if (playbackSource === "backend") {
-      try {
-        const response = await appendTrackToBackendQueue({
-          trackId: track.id,
-        });
-        if (response.playback) {
-          syncPlayback(response.playback);
-        }
-      } catch (error) {
-        pushNotice({
-          message: formatBackendError(
-            error,
-            "Queue backend is unavailable. The track was only queued locally.",
-          ),
-          variant: "warning",
-          dedupeKey: `queue-append-${track.id}`,
-        });
-      }
-    }
-
-    if (
-      playbackSource === "spotify" &&
-      spotify.isAuthenticated &&
-      track.spotifyUri
-    ) {
-      try {
-        syncSpotifyPlaybackResponse(await addTrackToSpotifyQueue(track.spotifyUri, spotifyDeviceId()));
-      } catch (error) {
-        warnSpotifyPlayback(error, `spotify-queue-append-${track.id}`);
-      }
-    }
-
     appendTrackToQueueLocal(track);
+    await syncBackendPlaybackSnapshot(`queue-append-${track.id}`);
+
+    const nextState = useQuaverStore.getState();
+    if (
+      nextState.playbackSource === "spotify" &&
+      spotify.isAuthenticated
+    ) {
+      await restartSpotifyPlaybackFromCurrentQueue(`spotify-queue-append-${track.id}`);
+    }
   }
 
   async function addTrackToPlaylist(playlist: Playlist, track: Track) {
     try {
-      await addTrackToBackendPlaylist(playlist.id, {
+      const response = await addTrackToBackendPlaylist(playlist.id, {
         trackId: track.id,
       });
+      if (response.playlists) {
+        replaceBackendPlaylists(response.playlists, response.selectedPlaylistId);
+        return;
+      }
       addTrackToPlaylistLocal(playlist.id, track);
     } catch (error) {
       pushNotice({
@@ -524,6 +582,44 @@ export function usePlaybackControllerRuntime() {
         variant: "warning",
         dedupeKey: `playlist-add-${playlist.id}-${track.id}`,
       });
+    }
+  }
+
+  async function removeQueueTrack(track: Track) {
+    const state = useQuaverStore.getState();
+    const removeIndex = state.queue.findIndex((queuedTrack) => sameTrack(queuedTrack, track));
+    if (removeIndex < 0) {
+      return;
+    }
+
+    const activeTrack = state.queue[state.currentTrackIndex];
+    const nextQueue = state.queue.filter((queuedTrack) => !sameTrack(queuedTrack, track));
+    const nextCurrentTrackIndex =
+      activeTrack && nextQueue.length
+        ? Math.max(0, nextQueue.findIndex((queuedTrack) => sameTrack(queuedTrack, activeTrack)))
+        : 0;
+
+    syncPlayback({
+      queue: nextQueue,
+      currentTrackIndex: nextCurrentTrackIndex < 0 ? Math.min(removeIndex, nextQueue.length - 1) : nextCurrentTrackIndex,
+      isPlaying: nextQueue.length ? state.isPlaying : false,
+      progress: sameTrack(activeTrack, track) ? 0 : state.progress,
+      playbackSource: state.playbackSource,
+    });
+    await syncBackendPlaybackSnapshot(`queue-remove-${track.id}`);
+
+    const nextState = useQuaverStore.getState();
+    if (nextState.playbackSource === "spotify" && spotify.isAuthenticated) {
+      if (!nextState.queue.length) {
+        try {
+          syncSpotifyTransportResponse(await pauseSpotifyPlayback(spotifyDeviceId()));
+        } catch (error) {
+          warnSpotifyPlayback(error, `spotify-queue-remove-${track.id}`);
+        }
+        return;
+      }
+
+      await restartSpotifyPlaybackFromCurrentQueue(`spotify-queue-remove-${track.id}`);
     }
   }
 
@@ -543,7 +639,10 @@ export function usePlaybackControllerRuntime() {
     toggleShuffleMode,
     cycleRepeatMode,
     queueTrackNext,
+    moveQueueTrackToFront,
     queueTrackLater,
     addTrackToPlaylist,
+    applyAgentPlaybackMutation,
+    removeQueueTrack,
   };
 }

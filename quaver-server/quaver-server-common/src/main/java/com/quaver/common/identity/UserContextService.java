@@ -17,6 +17,7 @@ public class UserContextService {
     public static final String USER_NAME_HEADER = "x-quaver-user-name";
     public static final String USER_EMAIL_HEADER = "x-quaver-user-email";
 
+    private final ThreadLocal<UserContextSnapshot> userContextOverride = new ThreadLocal<>();
     private final UserMapper userMapper;
     private final QuaverAppProperties appProperties;
 
@@ -43,6 +44,11 @@ public class UserContextService {
 
     @Transactional
     public UserEntity getCurrentUser() {
+        UserContextSnapshot override = userContextOverride.get();
+        if (override != null) {
+            return resolveUser(override.userId(), override.displayName(), override.email());
+        }
+
         ServletRequestAttributes attributes = currentRequestAttributes();
         if (attributes == null) {
             return ensureDefaultUser();
@@ -57,18 +63,62 @@ public class UserContextService {
         String displayName = normalize(readHeader(request, USER_NAME_HEADER));
         String email = normalize(readHeader(request, USER_EMAIL_HEADER));
 
-        String username = userId;
-        if (isBlank(email)) {
-            email = userId + "@quaver.local";
+        return resolveUser(userId, displayName, email);
+    }
+
+    public String getCurrentUserId() {
+        return getCurrentUser().getId();
+    }
+
+    @Transactional
+    public UserContextSnapshot captureCurrentUserContext() {
+        UserEntity user = getCurrentUser();
+        Object displayName = user.getPreferences() == null ? null : user.getPreferences().get("displayName");
+        return new UserContextSnapshot(
+                user.getId(),
+                displayName instanceof String stringValue ? stringValue : user.getUsername(),
+                user.getEmail()
+        );
+    }
+
+    public void runWithUserContext(UserContextSnapshot snapshot, Runnable action) {
+        UserContextSnapshot previous = userContextOverride.get();
+        if (snapshot != null) {
+            userContextOverride.set(snapshot);
+        } else {
+            userContextOverride.remove();
+        }
+        try {
+            action.run();
+        } finally {
+            if (previous == null) {
+                userContextOverride.remove();
+            } else {
+                userContextOverride.set(previous);
+            }
+        }
+    }
+
+    private UserEntity resolveUser(String userId, String displayName, String email) {
+        String normalizedUserId = normalize(userId);
+        if (isBlank(normalizedUserId)) {
+            return ensureDefaultUser();
         }
 
-        UserEntity existing = userMapper.selectById(userId);
+        String username = normalizedUserId;
+        String normalizedDisplayName = normalize(displayName);
+        String normalizedEmail = normalize(email);
+        if (isBlank(normalizedEmail)) {
+            normalizedEmail = normalizedUserId + "@quaver.local";
+        }
+
+        UserEntity existing = userMapper.selectById(normalizedUserId);
         if (existing == null) {
             UserEntity user = new UserEntity();
-            user.setId(userId);
+            user.setId(normalizedUserId);
             user.setUsername(username);
-            user.setEmail(email);
-            user.setPreferences(isBlank(displayName) ? Map.of() : Map.of("displayName", displayName));
+            user.setEmail(normalizedEmail);
+            user.setPreferences(isBlank(normalizedDisplayName) ? Map.of() : Map.of("displayName", normalizedDisplayName));
             userMapper.insert(user);
             return user;
         }
@@ -78,22 +128,18 @@ public class UserContextService {
             existing.setUsername(username);
             changed = true;
         }
-        if (!isBlank(email) && !email.equals(existing.getEmail())) {
-            existing.setEmail(email);
+        if (!isBlank(normalizedEmail) && !normalizedEmail.equals(existing.getEmail())) {
+            existing.setEmail(normalizedEmail);
             changed = true;
         }
-        if (!isBlank(displayName)) {
-            existing.setPreferences(Map.of("displayName", displayName));
+        if (!isBlank(normalizedDisplayName)) {
+            existing.setPreferences(Map.of("displayName", normalizedDisplayName));
             changed = true;
         }
         if (changed) {
             userMapper.updateById(existing);
         }
         return existing;
-    }
-
-    public String getCurrentUserId() {
-        return getCurrentUser().getId();
     }
 
     private ServletRequestAttributes currentRequestAttributes() {
@@ -121,5 +167,8 @@ public class UserContextService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    public record UserContextSnapshot(String userId, String displayName, String email) {
     }
 }

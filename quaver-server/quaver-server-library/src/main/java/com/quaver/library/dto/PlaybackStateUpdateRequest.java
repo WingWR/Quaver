@@ -1,5 +1,7 @@
 package com.quaver.library.dto;
 
+import com.quaver.common.model.music.TrackView;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -8,6 +10,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PlaybackStateUpdateRequest {
+
+    private List<TrackView> queue;
 
     private Integer currentTrackIndex;
 

@@ -22,8 +22,10 @@ export default function MainCanvasWorkspace() {
         />
       ) : null}
 
-      <motion.section className="glass-surface relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[34px] p-6 shadow-[0_28px_80px_rgba(0,0,0,0.42)] md:p-7">
-        <div className="pointer-events-none absolute inset-[1px] rounded-[33px] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.008))]" />
+      <motion.section className="glass-surface sonic-panel relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[34px] p-6 shadow-[0_28px_80px_rgba(0,0,0,0.42)] md:p-7">
+        <div className="pointer-events-none absolute inset-0 sonic-grid opacity-20" />
+        <div className="pointer-events-none absolute inset-[1px] rounded-[33px] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.008))]" />
+        <div className="pointer-events-none absolute right-8 top-7 h-20 w-20 rounded-full bg-emerald-300/10 blur-2xl" />
         <div className="relative flex min-h-0 flex-1 flex-col">
           {workspaceView === "agent" ? <AgentWorkspacePanel /> : <LibraryWorkspaceView />}
         </div>

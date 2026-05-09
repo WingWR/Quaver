@@ -304,6 +304,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
     }),
   syncPlayback: (payload) =>
     set((state) => {
+      const hasQueuePayload = payload.queue !== undefined;
       const rawQueue = payload.queue ?? state.queue;
       const normalized = normalizeQueue(
         rawQueue,
@@ -318,7 +319,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
         playbackSource: payload.playbackSource ?? state.playbackSource,
         isShuffleEnabled: payload.isShuffleEnabled ?? state.isShuffleEnabled,
         repeatMode: payload.repeatMode ?? state.repeatMode,
-        queueRevision: state.queueRevision + 1,
+        queueRevision: hasQueuePayload ? state.queueRevision + 1 : state.queueRevision,
       };
     }),
   setCurrentTrackIndex: (index) =>
@@ -383,6 +384,7 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
       }
 
       const queue = [...state.queue];
+      const activeTrack = state.queue[state.currentTrackIndex];
       let insertIndex = state.currentTrackIndex + 1;
 
       if (existingIndex >= 0) {
@@ -395,8 +397,20 @@ export const useQuaverStore = create<QuaverStore>((set) => ({
         queue.splice(insertIndex, 0, track);
       }
 
+      const currentTrackIndex = activeTrack
+        ? Math.max(
+            0,
+            queue.findIndex(
+              (queuedTrack) =>
+                (queuedTrack.spotifyId ?? queuedTrack.id) ===
+                (activeTrack.spotifyId ?? activeTrack.id),
+            ),
+          )
+        : state.currentTrackIndex;
+
       return {
         queue,
+        currentTrackIndex,
         queueRevision: state.queueRevision + 1,
       };
     }),

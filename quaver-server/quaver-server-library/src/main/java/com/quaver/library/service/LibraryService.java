@@ -18,6 +18,10 @@ public interface LibraryService {
 
     LibraryMutationResponse insertTrackNext(String trackId);
 
+    LibraryMutationResponse removeTrackFromQueue(String trackId);
+
+    LibraryMutationResponse clearQueue();
+
     LibraryMutationResponse createPlaylist(String name, String description);
 
     LibraryMutationResponse updatePlaylist(String playlistId, String name, String description);
@@ -28,7 +32,7 @@ public interface LibraryService {
 
     PlaybackStateView startPlayback(List<TrackView> queue, int startIndex, PlaybackSource playbackSource);
 
-    PlaybackStateView updatePlaybackState(Integer currentTrackIndex, Boolean isPlaying, Integer progress, Integer volume,
+    PlaybackStateView updatePlaybackState(List<TrackView> queue, Integer currentTrackIndex, Boolean isPlaying, Integer progress, Integer volume,
                                           PlaybackSource playbackSource, Boolean isShuffleEnabled, RepeatMode repeatMode);
 
     TrackView cacheTrack(TrackView track);

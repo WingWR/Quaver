@@ -13,10 +13,11 @@ import com.quaver.agent.dto.CreateAgentConversationRequest;
 import com.quaver.agent.dto.SendAgentMessageRequest;
 import com.quaver.agent.dto.SendAgentMessageResponse;
 import com.quaver.agent.model.ParsedAgentCommand;
-import com.quaver.agent.service.AgentCommandParser;
+import com.quaver.agent.service.AgentCommandPlanner;
 import com.quaver.agent.service.AgentConversationService;
 import com.quaver.agent.service.AgentTrackSearchService;
 import com.quaver.common.config.QuaverAiProperties;
+import com.quaver.common.identity.UserContextService;
 import com.quaver.common.model.music.PlaybackSource;
 import com.quaver.common.model.music.PlaybackStateView;
 import com.quaver.common.model.music.PlaylistView;
@@ -28,6 +29,8 @@ import com.quaver.spotify.service.SpotifyAuthService;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,30 +43,38 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class DefaultAgentConversationService implements AgentConversationService {
 
     private static final String TRANSIENT_CONVERSATION_ID = "transient-agent-session";
+    private static final String SELECTION_SINGLE = "single";
+    private static final String SELECTION_COLLECTION = "collection";
+    private static final int SINGLE_TRACK_LIMIT = 1;
+    private static final int COLLECTION_PLAYBACK_LIMIT = 8;
+    private static final int COLLECTION_SEARCH_LIMIT = 10;
 
-    private final AgentCommandParser agentCommandParser;
+    private final AgentCommandPlanner agentCommandPlanner;
     private final AgentTrackSearchService agentTrackSearchService;
     private final AgentAiService agentAiService;
     private final LibraryService libraryService;
+    private final UserContextService userContextService;
     private final QuaverAiProperties aiProperties;
     private final SpotifyProperties spotifyProperties;
     private final SpotifyAuthService spotifyAuthService;
     private final Clock clock;
 
     public DefaultAgentConversationService(
-            AgentCommandParser agentCommandParser,
+            AgentCommandPlanner agentCommandPlanner,
             AgentTrackSearchService agentTrackSearchService,
             AgentAiService agentAiService,
             LibraryService libraryService,
+            UserContextService userContextService,
             QuaverAiProperties aiProperties,
             SpotifyProperties spotifyProperties,
             SpotifyAuthService spotifyAuthService,
             Clock clock
     ) {
-        this.agentCommandParser = agentCommandParser;
+        this.agentCommandPlanner = agentCommandPlanner;
         this.agentTrackSearchService = agentTrackSearchService;
         this.agentAiService = agentAiService;
         this.libraryService = libraryService;
+        this.userContextService = userContextService;
         this.aiProperties = aiProperties;
         this.spotifyProperties = spotifyProperties;
         this.spotifyAuthService = spotifyAuthService;
@@ -90,7 +101,7 @@ public class DefaultAgentConversationService implements AgentConversationService
     public SendAgentMessageResponse sendMessage(String conversationId, SendAgentMessageRequest request) {
         String assistantModel = resolveAgentModel(request.getModel(), null);
         AgentConversationDto conversation = createConversationDto(null, assistantModel);
-        ParsedAgentCommand command = agentCommandParser.parse(request.getContent());
+        ParsedAgentCommand command = agentCommandPlanner.plan(request);
         AgentActionResult actionResult = executeAgentAction(command, request);
         String assistantReply = agentAiService.composeAgentReply(
                 request.getContent(),
@@ -120,7 +131,7 @@ public class DefaultAgentConversationService implements AgentConversationService
                 "completed",
                 assistantModel,
                 buildOperations(command),
-                Map.of("intent", command.intent().name(), "persistence", "transient")
+                assistantMetadata(command, actionResult)
         );
 
         return new SendAgentMessageResponse(conversation, userMessage, assistantMessage, null, actionResult.libraryMutation());
@@ -129,7 +140,10 @@ public class DefaultAgentConversationService implements AgentConversationService
     @Override
     public SseEmitter streamMessage(String conversationId, SendAgentMessageRequest request) {
         SseEmitter emitter = new SseEmitter(180_000L);
-        CompletableFuture.runAsync(() -> streamMessageInternal(emitter, conversationId, request));
+        UserContextService.UserContextSnapshot userContext = userContextService.captureCurrentUserContext();
+        CompletableFuture.runAsync(() ->
+                userContextService.runWithUserContext(userContext, () ->
+                        streamMessageInternal(emitter, conversationId, request)));
         return emitter;
     }
 
@@ -169,7 +183,7 @@ public class DefaultAgentConversationService implements AgentConversationService
                     .message(userMessage)
                     .build());
 
-            ParsedAgentCommand command = agentCommandParser.parse(request.getContent());
+            ParsedAgentCommand command = agentCommandPlanner.plan(request);
             AgentActionResult actionResult = executeAgentAction(command, request);
             List<AgentOperationDto> operations = buildOperations(command);
             for (AgentOperationDto operation : operations) {
@@ -189,7 +203,7 @@ public class DefaultAgentConversationService implements AgentConversationService
                     "running",
                     assistantModel,
                     operations,
-                    Map.of("intent", command.intent().name(), "persistence", "transient")
+                    assistantMetadata(command, actionResult)
             );
             emit(emitter, "assistant_message_start", AgentStreamEventDto.builder()
                     .type("assistant_message_start")
@@ -216,7 +230,7 @@ public class DefaultAgentConversationService implements AgentConversationService
                     "completed",
                     assistantModel,
                     operations,
-                    Map.of("intent", command.intent().name(), "persistence", "transient")
+                    assistantMetadata(command, actionResult)
             );
             SendAgentMessageResponse response = new SendAgentMessageResponse(
                     conversation,
@@ -246,24 +260,43 @@ public class DefaultAgentConversationService implements AgentConversationService
     private AgentActionResult executeAgentAction(ParsedAgentCommand command, SendAgentMessageRequest request) {
         return switch (command.intent()) {
             case SEARCH -> {
-                AgentTrackSearchResponse response = searchTracks(command.query(), request, 12);
+                String selectionMode = effectiveSelectionMode(command, request);
+                AgentTrackSearchResponse response = searchTracks(
+                        command.query().isBlank() ? request.getContent() : command.query(),
+                        request,
+                        searchResultLimit(selectionMode),
+                        selectionMode
+                );
                 if (response.getTracks().isEmpty()) {
                     yield result("I parsed this as a search request, but there are no matching tracks in the current cache or Spotify bridge.");
                 }
                 String topTitles = response.getTracks().stream().limit(3).map(TrackView::title).reduce((left, right) -> left + ", " + right).orElse("");
-                yield result("I parsed this as a search request and found " + response.getTracks().size() + " visible candidate tracks. Top results: " + topTitles + ".");
+                yield result(
+                        "I parsed this as a search request and found " + response.getTracks().size()
+                                + " visible candidate tracks. Top results: " + topTitles + ".",
+                        null,
+                        withSelectionMode(selectionMode, trackCards("Search results", response.getTracks()))
+                );
             }
             case PLAY -> {
-                AgentTrackSearchResponse response = searchTracks(command.query().isBlank() ? request.getContent() : command.query(), request, 12);
+                String selectionMode = effectiveSelectionMode(command, request);
+                AgentTrackSearchResponse response = searchTracks(
+                        command.query().isBlank() ? request.getContent() : command.query(),
+                        request,
+                        playbackSearchLimit(selectionMode),
+                        selectionMode
+                );
                 if (response.getTracks().isEmpty()) {
                     yield result("I parsed this as a play command, but I could not find a playable track yet.");
                 }
-                PlaybackStateView playback = libraryService.startPlayback(response.getTracks(), 0,
+                List<TrackView> playbackQueue = prependTracksToCurrentQueue(response.getTracks());
+                PlaybackStateView playback = libraryService.startPlayback(playbackQueue, 0,
                         response.getTracks().getFirst().source() == PlaybackSource.SPOTIFY ? PlaybackSource.SPOTIFY : PlaybackSource.BACKEND);
                 yield result(
-                        "I parsed this as a play command and loaded " + response.getTracks().size()
-                                + " track(s) into the queue. Playback session state has been updated on the backend.",
-                        playbackMutation("Playback session started.", playback)
+                        "I parsed this as a play command and moved " + response.getTracks().size()
+                                + " track(s) to the front of the queue without removing the existing queue.",
+                        playbackMutation("Playback session started.", playback),
+                        withSelectionMode(selectionMode, playbackMetadata("start", playback, response.getTracks()))
                 );
             }
             case PLAY_PLAYLIST -> {
@@ -282,12 +315,17 @@ public class DefaultAgentConversationService implements AgentConversationService
                 yield result(
                         "I loaded playlist \"" + playlist.name() + "\" with " + playlist.tracks().size()
                                 + " track(s) into the queue and started playback.",
-                        playbackMutation("Playlist playback started.", playback)
+                        playbackMutation("Playlist playback started.", playback),
+                        playbackMetadata("start", playback, playlist.tracks())
                 );
             }
             case PAUSE -> {
-                PlaybackStateView playback = libraryService.updatePlaybackState(null, false, null, null, null, null, null);
-                yield result("Playback has been paused in the backend session.", playbackMutation("Playback paused.", playback));
+                PlaybackStateView playback = libraryService.updatePlaybackState(null, null, false, null, null, null, null, null);
+                yield result(
+                        "Playback has been paused in the backend session.",
+                        playbackMutation("Playback paused.", playback),
+                        playbackMetadata("pause", playback, List.of())
+                );
             }
             case NEXT -> movePlaybackBy(1, "next");
             case PREVIOUS -> movePlaybackBy(-1, "previous");
@@ -304,7 +342,7 @@ public class DefaultAgentConversationService implements AgentConversationService
                 yield result("I found " + playlists.size() + " backend playlist(s): " + names + ".");
             }
             case CREATE_PLAYLIST -> {
-                String name = command.query().isBlank() ? "New Playlist" : command.query();
+                String name = firstNonBlank(command.argument("name"), command.argument("playlist"), command.query(), "New Playlist");
                 LibraryMutationResponse mutation = libraryService.createPlaylist(name, "Created by Quaver Agent.");
                 yield result("Created playlist \"" + name + "\".", mutation);
             }
@@ -334,31 +372,64 @@ public class DefaultAgentConversationService implements AgentConversationService
                 if (playlist == null) {
                     yield result("I parsed this as an add-to-playlist request, but I could not find the target playlist.");
                 }
-                AgentTrackSearchResponse response = searchTracks(trackQuery, request, 8);
+                AgentTrackSearchResponse response = searchTracks(trackQuery, request, SINGLE_TRACK_LIMIT, SELECTION_SINGLE);
                 if (response.getTracks().isEmpty()) {
                     yield result("I parsed this as an add-to-playlist request, but I could not find a matching track.");
                 }
                 TrackView track = response.getTracks().getFirst();
                 LibraryMutationResponse mutation = libraryService.addTrackToPlaylist(playlist.id(), track.id());
-                yield result("Saved \"" + track.title() + "\" to playlist \"" + playlist.name() + "\".", mutation);
+                yield result("Saved \"" + track.title() + "\" to playlist \"" + playlist.name() + "\".", mutation,
+                        trackCards("Saved track", List.of(track)));
             }
             case ADD_TRACK_TO_QUEUE -> {
-                AgentTrackSearchResponse response = searchTracks(command.query().isBlank() ? request.getContent() : command.query(), request, 8);
+                String selectionMode = effectiveSelectionMode(command, request);
+                AgentTrackSearchResponse response = searchTracks(
+                        command.query().isBlank() ? request.getContent() : command.query(),
+                        request,
+                        playbackSearchLimit(selectionMode),
+                        selectionMode
+                );
                 if (response.getTracks().isEmpty()) {
                     yield result("I parsed this as a queue request, but I could not find a matching track.");
                 }
-                TrackView track = response.getTracks().getFirst();
-                LibraryMutationResponse mutation = libraryService.appendTrackToQueue(track.id());
-                yield result("Added \"" + track.title() + "\" to the queue.", mutation);
+                if (SELECTION_SINGLE.equals(selectionMode)) {
+                    TrackView track = response.getTracks().getFirst();
+                    LibraryMutationResponse mutation = libraryService.appendTrackToQueue(track.id());
+                    yield result("Added \"" + track.title() + "\" to the queue.", mutation,
+                            withSelectionMode(selectionMode, queueMetadata("queue_append", track)));
+                }
+
+                LibraryMutationResponse mutation = appendTracksToQueue(response.getTracks());
+                yield result("Added " + response.getTracks().size() + " track(s) to the queue.", mutation,
+                        withSelectionMode(selectionMode, queueMetadata("queue_append", response.getTracks())));
+            }
+            case CLEAR_QUEUE -> {
+                LibraryMutationResponse mutation = libraryService.clearQueue();
+                yield result("Cleared the playback queue.", mutation,
+                        playbackMetadata("queue_clear", mutation.getPlayback(), List.of()));
+            }
+            case REMOVE_TRACK_FROM_QUEUE -> {
+                TrackView track = findQueuedTrack(command.query().isBlank() ? request.getContent() : command.query());
+                if (track == null) {
+                    yield result("I parsed this as a remove-from-queue request, but I could not find that track in the current queue.");
+                }
+                LibraryMutationResponse mutation = libraryService.removeTrackFromQueue(track.id());
+                yield result("Removed \"" + track.title() + "\" from the playback queue.", mutation,
+                        queueMetadata("queue_remove", track));
             }
             case INSERT_TRACK_NEXT -> {
-                AgentTrackSearchResponse response = searchTracks(command.query().isBlank() ? request.getContent() : command.query(), request, 8);
-                if (response.getTracks().isEmpty()) {
-                    yield result("I parsed this as a play-next request, but I could not find a matching track.");
+                String query = command.query().isBlank() ? request.getContent() : command.query();
+                TrackView track = findQueuedTrack(query);
+                if (track == null) {
+                    AgentTrackSearchResponse response = searchTracks(query, request, SINGLE_TRACK_LIMIT, SELECTION_SINGLE);
+                    if (response.getTracks().isEmpty()) {
+                        yield result("I parsed this as a play-next request, but I could not find a matching track.");
+                    }
+                    track = response.getTracks().getFirst();
                 }
-                TrackView track = response.getTracks().getFirst();
                 LibraryMutationResponse mutation = libraryService.insertTrackNext(track.id());
-                yield result("Inserted \"" + track.title() + "\" as the next track.", mutation);
+                yield result("Inserted \"" + track.title() + "\" as the next track.", mutation,
+                        queueMetadata("queue_insert_next", track));
             }
             case CHAT -> result("Agent request accepted for music chat. No library or playback mutation was executed; return a natural Quaver Agent response focused on music.");
         };
@@ -377,7 +448,9 @@ public class DefaultAgentConversationService implements AgentConversationService
             case CREATE_PLAYLIST, RENAME_PLAYLIST, DELETE_PLAYLIST -> List.of(parsed, operation("tool_call", "Playlist mutation", "Backend playlists were updated.", "completed"));
             case ADD_TRACK_TO_PLAYLIST -> List.of(parsed, operation("tool_call", "Track search", "Resolved the requested track.", "completed"),
                     operation("tool_call", "Playlist mutation", "Target playlist was updated.", "completed"));
-            case ADD_TRACK_TO_QUEUE, INSERT_TRACK_NEXT -> List.of(parsed, operation("tool_call", "Track search", "Resolved the requested track.", "completed"),
+            case ADD_TRACK_TO_QUEUE, REMOVE_TRACK_FROM_QUEUE, INSERT_TRACK_NEXT -> List.of(parsed, operation("tool_call", "Track search", "Resolved the requested track.", "completed"),
+                    operation("tool_call", "Queue sync", "Playback queue has been updated on the backend.", "completed"));
+            case CLEAR_QUEUE -> List.of(parsed,
                     operation("tool_call", "Queue sync", "Playback queue has been updated on the backend.", "completed"));
             case CHAT -> List.of(
                     parsed,
@@ -387,7 +460,12 @@ public class DefaultAgentConversationService implements AgentConversationService
         };
     }
 
-    private AgentTrackSearchResponse searchTracks(String query, SendAgentMessageRequest request, int limit) {
+    private AgentTrackSearchResponse searchTracks(
+            String query,
+            SendAgentMessageRequest request,
+            int limit,
+            String selectionMode
+    ) {
         return agentTrackSearchService.search(new AgentTrackSearchRequest(
                 query,
                 aiProperties.getSearchModel(),
@@ -396,9 +474,18 @@ public class DefaultAgentConversationService implements AgentConversationService
                 selectedPlaylistId(request),
                 List.of(),
                 List.of(),
-                request.getSpotifyDeveloperAccount(),
-                request.getMetadata()
+                request == null ? null : request.getSpotifyDeveloperAccount(),
+                searchMetadata(request, selectionMode)
         ));
+    }
+
+    private Map<String, Object> searchMetadata(SendAgentMessageRequest request, String selectionMode) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (request != null && request.getMetadata() != null) {
+            metadata.putAll(request.getMetadata());
+        }
+        metadata.put("selectionMode", selectionMode);
+        return metadata;
     }
 
     private AgentActionResult movePlaybackBy(int offset, String direction) {
@@ -408,12 +495,138 @@ public class DefaultAgentConversationService implements AgentConversationService
         }
 
         int targetIndex = Math.max(0, Math.min(current.queue().size() - 1, current.currentTrackIndex() + offset));
-        PlaybackStateView playback = libraryService.updatePlaybackState(targetIndex, true, 0, null, null, null, null);
+        PlaybackStateView playback = libraryService.updatePlaybackState(null, targetIndex, true, 0, null, null, null, null);
         TrackView activeTrack = playback.queue().get(playback.currentTrackIndex());
         return result(
                 "Moved to " + direction + " track: \"" + activeTrack.title() + "\" by " + activeTrack.artist() + ".",
-                playbackMutation("Playback moved to " + direction + " track.", playback)
+                playbackMutation("Playback moved to " + direction + " track.", playback),
+                playbackMetadata("seek_to_index", playback, List.of(activeTrack))
         );
+    }
+
+    private int playbackSearchLimit(String selectionMode) {
+        return SELECTION_SINGLE.equals(selectionMode) ? SINGLE_TRACK_LIMIT : COLLECTION_PLAYBACK_LIMIT;
+    }
+
+    private int searchResultLimit(String selectionMode) {
+        return SELECTION_SINGLE.equals(selectionMode) ? SINGLE_TRACK_LIMIT : COLLECTION_SEARCH_LIMIT;
+    }
+
+    private String effectiveSelectionMode(ParsedAgentCommand command, SendAgentMessageRequest request) {
+        String content = request == null ? "" : request.getContent();
+        String query = command == null ? "" : command.query();
+        String text = normalizeLookup(content + " " + query);
+
+        if (hasSingleCue(text)) {
+            return SELECTION_SINGLE;
+        }
+        if (hasCollectionCue(text)) {
+            return SELECTION_COLLECTION;
+        }
+        if (isGenericCollectionQuery(query)) {
+            return SELECTION_COLLECTION;
+        }
+
+        String plannedMode = command == null ? "" : command.argument("selectionMode");
+        if (SELECTION_COLLECTION.equalsIgnoreCase(plannedMode)) {
+            return SELECTION_COLLECTION;
+        }
+        if (SELECTION_SINGLE.equalsIgnoreCase(plannedMode)) {
+            return SELECTION_SINGLE;
+        }
+        return query.isBlank() ? SELECTION_COLLECTION : SELECTION_SINGLE;
+    }
+
+    private boolean isGenericCollectionQuery(String query) {
+        String normalized = normalizeLookup(query);
+        return containsAny(normalized, "songs", "music")
+                || Objects.equals(normalized, "\u6b4c")
+                || Objects.equals(normalized, "\u6b4c\u66f2")
+                || Objects.equals(normalized, "\u97f3\u4e50");
+    }
+
+    private boolean hasSingleCue(String text) {
+        return containsAny(text,
+                "single", "one song", "one track", "specific song", "this song", "that song",
+                "\u4e00\u9996", "\u4e00\u66f2", "\u8fd9\u9996", "\u90a3\u9996", "\u67d0\u9996",
+                "\u5355\u66f2", "\u8fd9\u4e2a\u6b4c", "\u90a3\u4e2a\u6b4c");
+    }
+
+    private boolean hasCollectionCue(String text) {
+        return containsAny(text,
+                "artist", "songs by", "by artist", "some songs", "several songs", "multiple songs",
+                "collection", "mix", "recommend", "recommendations", "random", "genre", "mood",
+                "\u6b4c\u624b", "\u7684\u6b4c", "\u7684\u4f5c\u54c1", "\u4e00\u4e9b",
+                "\u51e0\u9996", "\u591a\u9996", "\u51e0\u4e2a", "\u63a8\u8350", "\u6765\u70b9",
+                "\u968f\u4fbf", "\u968f\u673a", "\u5408\u96c6", "\u98ce\u683c", "\u7c7b\u578b",
+                "\u8fd9\u7c7b\u6b4c", "\u90a3\u7c7b\u6b4c");
+    }
+
+    private List<TrackView> prependTracksToCurrentQueue(List<TrackView> tracks) {
+        List<TrackView> mergedQueue = new ArrayList<>();
+        if (tracks != null) {
+            for (TrackView track : tracks) {
+                if (track != null && !containsSameTrack(mergedQueue, track)) {
+                    mergedQueue.add(track);
+                }
+            }
+        }
+
+        PlaybackStateView currentPlayback = libraryService.getPlaybackState();
+        if (currentPlayback != null && currentPlayback.queue() != null) {
+            for (TrackView track : currentPlayback.queue()) {
+                if (track != null && !containsSameTrack(mergedQueue, track)) {
+                    mergedQueue.add(track);
+                }
+            }
+        }
+        return mergedQueue;
+    }
+
+    private LibraryMutationResponse appendTracksToQueue(List<TrackView> tracks) {
+        PlaybackStateView currentPlayback = libraryService.getPlaybackState();
+        List<TrackView> queue = new ArrayList<>();
+        if (currentPlayback != null && currentPlayback.queue() != null) {
+            queue.addAll(currentPlayback.queue());
+        }
+        if (tracks != null) {
+            for (TrackView track : tracks) {
+                if (track != null && !containsSameTrack(queue, track)) {
+                    queue.add(track);
+                }
+            }
+        }
+
+        PlaybackStateView playback = libraryService.updatePlaybackState(
+                queue,
+                currentPlayback == null ? 0 : currentPlayback.currentTrackIndex(),
+                currentPlayback != null && currentPlayback.isPlaying(),
+                currentPlayback == null ? 0 : currentPlayback.progress(),
+                currentPlayback == null ? null : currentPlayback.volume(),
+                currentPlayback == null ? PlaybackSource.BACKEND : currentPlayback.playbackSource(),
+                currentPlayback != null && currentPlayback.isShuffleEnabled(),
+                currentPlayback == null ? null : currentPlayback.repeatMode()
+        );
+        return new LibraryMutationResponse(true, "Tracks appended to queue.", playback, null, null);
+    }
+
+    private boolean containsSameTrack(List<TrackView> tracks, TrackView target) {
+        for (TrackView track : tracks) {
+            if (sameTrack(track, target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean sameTrack(TrackView left, TrackView right) {
+        if (left == null || right == null) {
+            return false;
+        }
+
+        return Objects.equals(left.id(), right.id())
+                || (left.spotifyId() != null && Objects.equals(left.spotifyId(), right.spotifyId()))
+                || (left.spotifyUri() != null && Objects.equals(left.spotifyUri(), right.spotifyUri()));
     }
 
     private PlaylistView findPlaylist(String query, SendAgentMessageRequest request) {
@@ -443,6 +656,49 @@ public class DefaultAgentConversationService implements AgentConversationService
         return null;
     }
 
+    private TrackView findQueuedTrack(String query) {
+        PlaybackStateView playbackState = libraryService.getPlaybackState();
+        if (playbackState == null || playbackState.queue().isEmpty()) {
+            return null;
+        }
+
+        String normalizedQuery = normalizeLookup(query)
+                .replace("播放队列", "")
+                .replace("播放列表", "")
+                .replace("队列", "")
+                .replace("移除", "")
+                .replace("移出", "")
+                .replace("删除", "")
+                .replace("删掉", "")
+                .replace("下一首播放", "")
+                .replace("移到最前", "")
+                .replace("移至最前", "")
+                .trim();
+        if (normalizedQuery.isBlank()) {
+            return null;
+        }
+
+        for (TrackView track : playbackState.queue()) {
+            if (Objects.equals(normalizeLookup(track.id()), normalizedQuery)
+                    || Objects.equals(normalizeLookup(track.spotifyId()), normalizedQuery)
+                    || Objects.equals(normalizeLookup(track.spotifyUri()), normalizedQuery)) {
+                return track;
+            }
+        }
+
+        for (TrackView track : playbackState.queue()) {
+            String title = normalizeLookup(track.title());
+            String artist = normalizeLookup(track.artist());
+            if (title.contains(normalizedQuery)
+                    || normalizedQuery.contains(title)
+                    || artist.contains(normalizedQuery)
+                    || normalizedQuery.contains(artist)) {
+                return track;
+            }
+        }
+        return null;
+    }
+
     private String selectedPlaylistId(SendAgentMessageRequest request) {
         if (request == null || request.getMetadata() == null) {
             return "";
@@ -455,16 +711,87 @@ public class DefaultAgentConversationService implements AgentConversationService
         return value == null ? "" : value.trim().toLowerCase();
     }
 
+    private boolean containsAny(String content, String... values) {
+        for (String value : values) {
+            if (content.contains(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private LibraryMutationResponse playbackMutation(String message, PlaybackStateView playback) {
         return new LibraryMutationResponse(true, message, playback, null, null);
     }
 
     private AgentActionResult result(String reply) {
-        return new AgentActionResult(reply, null);
+        return new AgentActionResult(reply, null, Map.of());
     }
 
     private AgentActionResult result(String reply, LibraryMutationResponse mutation) {
-        return new AgentActionResult(reply, mutation);
+        return new AgentActionResult(reply, mutation, Map.of());
+    }
+
+    private AgentActionResult result(String reply, LibraryMutationResponse mutation, Map<String, Object> metadata) {
+        return new AgentActionResult(reply, mutation, metadata == null ? Map.of() : metadata);
+    }
+
+    private Map<String, Object> assistantMetadata(ParsedAgentCommand command, AgentActionResult actionResult) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("intent", command.intent().name());
+        metadata.put("persistence", "transient");
+        metadata.put("selectionMode", command.argument("selectionMode"));
+        metadata.putAll(actionResult.metadata());
+        return metadata;
+    }
+
+    private Map<String, Object> trackCards(String title, List<TrackView> tracks) {
+        return Map.of(
+                "cards", Map.of(
+                        "type", "track_list",
+                        "title", title,
+                        "tracks", tracks == null ? List.of() : tracks
+                )
+        );
+    }
+
+    private Map<String, Object> playbackMetadata(String command, PlaybackStateView playback, List<TrackView> tracks) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("playbackCommand", command);
+        metadata.putAll(trackCards("Playback queue", tracks == null || tracks.isEmpty() ? playback.queue() : tracks));
+        return metadata;
+    }
+
+    private Map<String, Object> withSelectionMode(String selectionMode, Map<String, Object> metadata) {
+        Map<String, Object> nextMetadata = new LinkedHashMap<>();
+        nextMetadata.put("selectionMode", selectionMode);
+        if (metadata != null) {
+            nextMetadata.putAll(metadata);
+        }
+        return nextMetadata;
+    }
+
+    private Map<String, Object> queueMetadata(String command, TrackView track) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("playbackCommand", command);
+        metadata.putAll(trackCards("Queued track", List.of(track)));
+        return metadata;
+    }
+
+    private Map<String, Object> queueMetadata(String command, List<TrackView> tracks) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("playbackCommand", command);
+        metadata.putAll(trackCards("Queued tracks", tracks == null ? List.of() : tracks));
+        return metadata;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private AgentConversationDto createConversationDto(String title, String model) {
@@ -537,7 +864,7 @@ public class DefaultAgentConversationService implements AgentConversationService
         return exception.getMessage();
     }
 
-    private record AgentActionResult(String reply, LibraryMutationResponse libraryMutation) {
+    private record AgentActionResult(String reply, LibraryMutationResponse libraryMutation, Map<String, Object> metadata) {
     }
 
     private static class AgentStreamSendException extends RuntimeException {

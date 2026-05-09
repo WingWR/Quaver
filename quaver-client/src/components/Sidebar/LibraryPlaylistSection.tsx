@@ -29,16 +29,31 @@ function PlaylistArtwork({
   name: string;
 }) {
   if (cover) {
-    return <img src={cover} alt={name} className="h-14 w-14 rounded-2xl object-cover" />;
+    return (
+      <div className="relative h-14 w-14 shrink-0">
+        <span
+          className="absolute -inset-1 rounded-[22px] opacity-50 blur-lg"
+          style={{ background: accent || "#34d399" }}
+        />
+        <img
+          src={cover}
+          alt={name}
+          className="relative h-14 w-14 rounded-[20px] border border-white/[0.12] object-cover shadow-[0_14px_34px_rgba(0,0,0,0.3)]"
+        />
+      </div>
+    );
   }
 
   return (
     <div
-      className="h-14 w-14 rounded-2xl"
+      className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[20px] border border-white/[0.12] shadow-[0_14px_34px_rgba(0,0,0,0.28)]"
       style={{
         background: `linear-gradient(135deg, ${accent || "#34d399"}cc, rgba(56,189,248,0.38), rgba(244,114,182,0.24))`,
       }}
-    />
+    >
+      <div className="absolute -right-4 -top-4 h-10 w-10 rounded-full bg-white/24 blur-xl" />
+      <div className="absolute bottom-2 left-2 right-2 h-1 rounded-full bg-white/30" />
+    </div>
   );
 }
 
@@ -215,14 +230,16 @@ export default function LibraryPlaylistSection() {
   }
 
   return (
-    <section className="flex min-h-0 flex-col lg:flex-1">
+    <section className="relative flex min-h-0 flex-col lg:flex-1">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-brand-grey">Library</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Playlists</h2>
+          <p className="section-eyebrow">Library</p>
+          <h2 className="chromatic-title mt-1 text-xl font-bold tracking-[-0.04em]">
+            Playlists
+          </h2>
         </div>
         <div className="flex items-center gap-2">
-          <div className="rounded-full bg-white/[0.04] px-3 py-1 text-[11px] text-brand-grey">
+          <div className="metric-chip rounded-full px-3 py-1 text-[11px] text-white/58">
             {playlists.length} Lists
           </div>
           <button
@@ -234,7 +251,7 @@ export default function LibraryPlaylistSection() {
               }
               startCreatePlaylist();
             }}
-            className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-black transition hover:bg-[#f3f3f3]"
+            className="rounded-full bg-[linear-gradient(135deg,#d9fff0,#67e8f9)] px-3 py-1 text-[11px] font-bold text-black shadow-[0_10px_24px_rgba(103,232,249,0.16)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(103,232,249,0.22)]"
           >
             {editorMode === "create" ? "Close" : "New"}
           </button>
@@ -244,36 +261,36 @@ export default function LibraryPlaylistSection() {
       {editorMode ? (
         <form
           onSubmit={(event) => void handleSubmit(event)}
-          className="mb-4 space-y-3 rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-4"
+          className="sonic-panel mb-4 space-y-3 rounded-[26px] p-4"
         >
-          <p className="text-xs uppercase tracking-[0.24em] text-brand-grey">
+          <p className="section-eyebrow relative">
             {editorMode === "rename" ? "Rename playlist" : "Create playlist"}
           </p>
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Playlist name"
-            className="w-full rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/18"
+            className="relative w-full rounded-2xl border border-white/[0.08] bg-black/25 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-cyan-200/30 focus:bg-black/36"
           />
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             placeholder="Short description"
             rows={3}
-            className="w-full resize-none rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/18"
+            className="relative w-full resize-none rounded-2xl border border-white/[0.08] bg-black/25 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-cyan-200/30 focus:bg-black/36"
           />
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => resetEditor()}
-              className="rounded-full bg-white/[0.05] px-4 py-2 text-sm text-white/78 transition hover:bg-white/[0.08] hover:text-white"
+              className="rounded-full bg-white/[0.055] px-4 py-2 text-sm text-white/78 transition hover:bg-white/[0.09] hover:text-white"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-full bg-[linear-gradient(135deg,#d9fff0,#fbbf24)] px-4 py-2 text-sm font-bold text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting
                 ? editorMode === "rename"
@@ -296,6 +313,7 @@ export default function LibraryPlaylistSection() {
               <motion.button
                 layout
                 key={playlist.id}
+                whileHover={{ y: -2 }}
                 type="button"
                 onClick={() => setSelectedPlaylist(playlist.id)}
                 onContextMenu={(event) => {
@@ -307,31 +325,39 @@ export default function LibraryPlaylistSection() {
                     playlist,
                   });
                 }}
-                className={`group relative w-full overflow-hidden rounded-[28px] px-4 py-4 text-left transition ${
+                className={`kinetic-card group w-full rounded-[28px] px-4 py-4 text-left transition duration-300 ${
                   isActive
-                    ? "bg-[linear-gradient(135deg,rgba(255,255,255,0.09),rgba(255,255,255,0.03))] shadow-[0_16px_40px_rgba(0,0,0,0.34)]"
-                    : "bg-white/[0.025] hover:bg-white/[0.045]"
+                    ? "border-emerald-200/18 bg-[linear-gradient(135deg,rgba(29,185,84,0.18),rgba(103,232,249,0.08),rgba(255,255,255,0.035))] shadow-[0_18px_48px_rgba(29,185,84,0.12)]"
+                    : "hover:border-white/[0.12] hover:bg-white/[0.045]"
                 }`}
               >
                 {isActive ? (
                   <motion.div
                     layoutId="active-playlist-pill"
-                    className="absolute inset-0 rounded-[28px] bg-[linear-gradient(135deg,rgba(29,185,84,0.14),rgba(255,255,255,0.05),rgba(0,0,0,0))]"
+                    className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_18%_0%,rgba(29,185,84,0.28),transparent_46%)]"
                   />
                 ) : null}
-                <div className="absolute inset-[1px] rounded-[27px] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.005))]" />
                 <div className="relative flex items-center gap-3">
                   <PlaylistArtwork
                     cover={playlist.cover}
                     accent={playlist.accent}
                     name={playlist.name}
                   />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white">{playlist.name}</p>
-                    <p className="mt-1 line-clamp-2 text-xs text-brand-grey">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-white">{playlist.name}</p>
+                      {isActive ? (
+                        <span className="mini-eq shrink-0" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/46">
                       {playlist.description || "No description yet."}
                     </p>
-                    <p className="mt-2 text-[11px] uppercase tracking-[0.22em] text-white/32">
+                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/34">
                       {playlist.tracks.length} tracks
                     </p>
                   </div>
@@ -341,9 +367,9 @@ export default function LibraryPlaylistSection() {
           })}
         </div>
       ) : (
-        <div className="rounded-[28px] border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-5">
+        <div className="sonic-panel rounded-[28px] border-dashed px-4 py-5">
           <p className="text-sm font-medium text-white">No playlists yet</p>
-          <p className="mt-2 text-sm leading-6 text-brand-grey">
+          <p className="relative mt-2 text-sm leading-6 text-white/52">
             {library.message ??
               "This user has not created any playlists yet. New playlists will appear here as soon as they are saved in Quaver."}
           </p>
