@@ -160,19 +160,27 @@ export function useSpotifyWebPlaybackSdk() {
 
       const sdkTrack = state.track_window.current_track;
       const currentState = useQuaverStore.getState();
+      if (currentState.suppressExternalQueueHydration && !currentState.queue.length) {
+        return;
+      }
+
       const existingIndex = sdkTrack
         ? currentState.queue.findIndex((track) => sameSpotifyTrack(sdkTrack, track))
         : -1;
+      const fallbackTrack = sdkTrack ? trackFromSpotifyState(sdkTrack) : null;
       const queue =
         existingIndex >= 0
           ? currentState.queue
-          : sdkTrack
-            ? [trackFromSpotifyState(sdkTrack)]
+          : fallbackTrack && sdkTrack
+            ? [
+                fallbackTrack,
+                ...currentState.queue.filter((track) => !sameSpotifyTrack(sdkTrack, track)),
+              ]
             : currentState.queue;
 
       syncPlayback({
         queue,
-        currentTrackIndex: existingIndex >= 0 ? existingIndex : 0,
+        currentTrackIndex: existingIndex >= 0 ? existingIndex : fallbackTrack ? 0 : currentState.currentTrackIndex,
         isPlaying: !state.paused,
         progress: Math.round(state.position / 1000),
         volume: currentState.volume,

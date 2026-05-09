@@ -21,14 +21,14 @@ function formatTimestamp(value: string) {
 
 function roleStyle(role: AgentMessage["role"]) {
   if (role === "assistant") {
-    return "bg-white/[0.06] text-white";
+    return "kinetic-card border-cyan-200/10 bg-[linear-gradient(135deg,rgba(103,232,249,0.08),rgba(255,255,255,0.04))] text-white";
   }
 
   if (role === "system") {
-    return "bg-white/[0.04] text-white/74";
+    return "metric-chip text-white/74";
   }
 
-  return "bg-white text-black";
+  return "bg-[linear-gradient(135deg,#f9fff9,#d9fff0_48%,#67e8f9)] text-black shadow-[0_14px_34px_rgba(103,232,249,0.12)]";
 }
 
 function bubbleAlignment(role: AgentMessage["role"]) {
@@ -107,12 +107,14 @@ function AgentTrackCardList({
   }
 
   return (
-    <div className="mt-3 rounded-[18px] border border-white/[0.07] bg-black/20 p-3">
+    <div className="sonic-panel mt-3 rounded-[20px] p-3">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-brand-grey">
+        <p className="section-eyebrow relative">
           {cards.title}
         </p>
-        <span className="text-xs text-white/45">{cards.tracks.length} tracks</span>
+        <span className="metric-chip relative rounded-full px-2.5 py-1 text-xs text-white/52">
+          {cards.tracks.length} tracks
+        </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {cards.tracks.slice(0, 8).map((track, index) => (
@@ -120,16 +122,22 @@ function AgentTrackCardList({
             key={`${track.id}-${index}`}
             type="button"
             onClick={() => onPlay(cards.tracks, index)}
-            className="group flex min-w-0 items-center gap-3 rounded-2xl bg-white/[0.045] px-3 py-2 text-left transition hover:bg-white/[0.09]"
+            className="kinetic-card group flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-white/[0.12]"
           >
             {track.artwork ? (
-              <img
-                src={track.artwork}
-                alt={track.title}
-                className="h-11 w-11 shrink-0 rounded-xl object-cover"
-              />
+              <div className="relative shrink-0">
+                <span
+                  className="absolute -inset-1 rounded-[16px] opacity-40 blur-md"
+                  style={{ background: track.accent }}
+                />
+                <img
+                  src={track.artwork}
+                  alt={track.title}
+                  className="relative h-11 w-11 rounded-[15px] border border-white/[0.1] object-cover"
+                />
+              </div>
             ) : (
-              <div className="h-11 w-11 shrink-0 rounded-xl bg-[linear-gradient(135deg,rgba(52,211,153,0.4),rgba(56,189,248,0.22))]" />
+              <div className="h-11 w-11 shrink-0 rounded-[15px] border border-white/[0.1] bg-[linear-gradient(135deg,rgba(52,211,153,0.4),rgba(56,189,248,0.22))]" />
             )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-white/90 group-hover:text-white">
@@ -179,12 +187,12 @@ export default function AgentWorkspacePanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-white/[0.06] bg-black/20">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.05] px-5 py-4">
+      <div className="sonic-panel flex min-h-0 flex-1 flex-col rounded-[32px]">
+        <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span
-                className={`h-2.5 w-2.5 rounded-full ${
+                className={`h-2.5 w-2.5 rounded-full shadow-[0_0_18px_currentColor] ${
                   isStreaming
                     ? "agent-ready-dot bg-cyan-300"
                     : isAiReady
@@ -192,10 +200,10 @@ export default function AgentWorkspacePanel() {
                       : "bg-amber-300"
                 }`}
               />
-              <h2 className="text-base font-semibold text-white">Agent</h2>
+              <h2 className="chromatic-title text-base font-bold tracking-[-0.03em]">Agent</h2>
             </div>
-            <p className="mt-1 truncate text-xs text-brand-grey">
-              DeepSeek {runtimeStatus?.aiAgentModel ?? model} ·{" "}
+            <p className="mt-1 truncate text-xs text-white/48">
+              DeepSeek {runtimeStatus?.aiAgentModel ?? model} /{" "}
               {isAiReady ? "API connected" : "Waiting for API key"}
             </p>
           </div>
@@ -206,7 +214,7 @@ export default function AgentWorkspacePanel() {
                 key={prompt}
                 type="button"
                 onClick={() => setDraft(prompt)}
-                className="rounded-full bg-white/[0.05] px-3 py-1.5 text-xs text-white/72 transition hover:bg-white/[0.09] hover:text-white"
+                className="metric-chip rounded-full px-3 py-1.5 text-xs text-white/72 transition hover:-translate-y-0.5 hover:text-white"
               >
                 {prompt}
               </button>
@@ -215,12 +223,12 @@ export default function AgentWorkspacePanel() {
         </div>
 
         {operations.length ? (
-          <div className="border-b border-white/[0.05] px-5 py-3">
+          <div className="relative border-b border-white/[0.06] px-5 py-3">
             <div className="flex gap-2 overflow-x-auto pb-1">
               {operations.map((operation) => (
                 <div
                   key={operation.id}
-                  className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-white/72"
+                  className="metric-chip shrink-0 rounded-full px-3 py-1.5 text-xs text-white/72"
                   title={operation.detail}
                 >
                   {operation.title}
@@ -232,11 +240,11 @@ export default function AgentWorkspacePanel() {
 
         <div
           ref={messageViewportRef}
-          className="scrollbar-brand flex-1 space-y-4 overflow-y-auto px-5 py-5"
+          className="scrollbar-brand relative flex-1 space-y-4 overflow-y-auto px-5 py-5"
         >
           {helperMessage ? (
             <div className="flex justify-center">
-              <div className="max-w-xl rounded-full bg-white/[0.05] px-4 py-2 text-xs leading-6 text-brand-grey">
+              <div className="metric-chip max-w-xl rounded-full px-4 py-2 text-xs leading-6 text-white/52">
                 {helperMessage}
               </div>
             </div>
@@ -255,7 +263,7 @@ export default function AgentWorkspacePanel() {
                 >
                   <div className={`flex w-full flex-col ${bubbleAlignment(message.role)}`}>
                     <div className={`w-full ${cards ? "max-w-[min(82%,44rem)]" : bubbleWidth(message.role)}`}>
-                      <div className={`rounded-[20px] px-4 py-3 ${roleStyle(message.role)}`}>
+                      <div className={`rounded-[22px] px-4 py-3 ${roleStyle(message.role)}`}>
                         <p
                           className={`whitespace-pre-wrap text-sm leading-7 ${
                             message.role === "user" ? "text-black/88" : "text-white/88"
@@ -291,8 +299,8 @@ export default function AgentWorkspacePanel() {
             })
           ) : (
             <div className="flex min-h-full items-center justify-center py-8">
-              <div className="max-w-md rounded-[20px] bg-white/[0.04] px-5 py-4 text-center">
-                <p className="text-sm leading-7 text-brand-grey">
+              <div className="metric-chip max-w-md rounded-[22px] px-5 py-4 text-center">
+                <p className="text-sm leading-7 text-white/54">
                   Start the conversation below.
                 </p>
               </div>
@@ -300,8 +308,8 @@ export default function AgentWorkspacePanel() {
           )}
         </div>
 
-        <div className="border-t border-white/[0.05] px-5 py-4">
-          <div className="rounded-[22px] bg-white/[0.04] p-3">
+        <div className="relative border-t border-white/[0.06] px-5 py-4">
+          <div className="rounded-[24px] border border-white/[0.08] bg-black/24 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
             <div className="flex items-end gap-3">
               <textarea
                 value={draft}
@@ -314,13 +322,13 @@ export default function AgentWorkspacePanel() {
                 }}
                 rows={1}
                 placeholder="Message Agent..."
-                className="min-h-[38px] max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-white outline-none placeholder:text-brand-grey"
+                className="min-h-[38px] max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-white outline-none placeholder:text-white/34"
               />
               <button
                 type="button"
                 onClick={() => void submitDraft()}
                 disabled={!draft.trim() || !canSend}
-                className="shrink-0 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
+                className="shrink-0 rounded-full bg-[linear-gradient(135deg,#d9fff0,#67e8f9)] px-5 py-2.5 text-sm font-bold text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
               >
                 {status === "submitting" ? "Sending..." : "Send"}
               </button>

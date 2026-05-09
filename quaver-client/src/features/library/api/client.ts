@@ -30,6 +30,21 @@ export function appendTrackToBackendQueue(payload: QueueMutationRequest) {
   });
 }
 
+export function removeTrackFromBackendQueue(trackId: string) {
+  return backendRequest<LibraryMutationResponse>(
+    `${LIBRARY_BASE_PATH}/queue/${encodeURIComponent(trackId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+export function clearBackendQueue() {
+  return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/queue`, {
+    method: "DELETE",
+  });
+}
+
 export function createBackendPlaylist(payload: PlaylistCreateRequest) {
   return backendRequest<LibraryMutationResponse>(`${LIBRARY_BASE_PATH}/playlists`, {
     method: "POST",

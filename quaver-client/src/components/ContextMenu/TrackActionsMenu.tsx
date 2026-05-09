@@ -16,13 +16,17 @@ export default function TrackActionsMenu({
   onPlayNext,
   onAddToQueue,
   onAddToPlaylist,
+  onRemoveFromQueue,
+  queueMode = false,
 }: {
   menu: MenuState | null;
   playlists: Playlist[];
   onClose: () => void;
   onPlayNext: (track: Track) => void | Promise<void>;
-  onAddToQueue: (track: Track) => void | Promise<void>;
+  onAddToQueue?: (track: Track) => void | Promise<void>;
   onAddToPlaylist: (playlist: Playlist, track: Track) => void | Promise<void>;
+  onRemoveFromQueue?: (track: Track) => void | Promise<void>;
+  queueMode?: boolean;
 }) {
   useEffect(() => {
     if (!menu) {
@@ -83,18 +87,31 @@ export default function TrackActionsMenu({
                 }}
                 className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/84 transition hover:bg-white/[0.06] hover:text-white"
               >
-                Play next
+                {queueMode ? "Move to front" : "Play next"}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void onAddToQueue(menu.track);
-                  onClose();
-                }}
-                className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/84 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                Add to queue
-              </button>
+              {queueMode && onRemoveFromQueue ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onRemoveFromQueue(menu.track);
+                    onClose();
+                  }}
+                  className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-red-200/90 transition hover:bg-red-400/[0.12] hover:text-red-100"
+                >
+                  Remove from queue
+                </button>
+              ) : onAddToQueue ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onAddToQueue(menu.track);
+                    onClose();
+                  }}
+                  className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/84 transition hover:bg-white/[0.06] hover:text-white"
+                >
+                  Add to queue
+                </button>
+              ) : null}
             </div>
 
             <div className="border-t border-white/[0.05] px-1 py-2">
