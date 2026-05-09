@@ -48,7 +48,9 @@ public class DefaultAgentAiService implements AgentAiService {
                 - LIST_PLAYLISTS, CREATE_PLAYLIST, RENAME_PLAYLIST, DELETE_PLAYLIST.
                 - ADD_TRACK_TO_PLAYLIST: add exactly one best matching track to a playlist unless the user explicitly asks for multiple.
                 - ADD_TRACK_TO_QUEUE: add exactly one best matching track to the queue.
-                - INSERT_TRACK_NEXT: add exactly one best matching track as next up.
+                - REMOVE_TRACK_FROM_QUEUE: remove one matching track from the current queue.
+                - CLEAR_QUEUE: clear all tracks from the current queue and stop queue playback.
+                - INSERT_TRACK_NEXT: add exactly one best matching track as next up, or move an existing queued track to next up/front.
                 - CHAT: music conversation only, no tool call.
 
                 Planning rules:
@@ -57,7 +59,9 @@ public class DefaultAgentAiService implements AgentAiService {
                 - If the user names a specific song, set selectionMode to "single"; the executor will use the top search result only.
                 - If the user asks for songs by an artist, genre, mood, scene, or says "some songs", set selectionMode to "collection".
                 - Never turn ADD_TRACK_TO_PLAYLIST into PLAY or queue mutation.
-                - In Chinese, "播放列表" or "播放队列" usually means the current queue; use ADD_TRACK_TO_QUEUE unless a named 歌单 is explicit.
+                - In Chinese, "播放列表" or "播放队列" means the current queue; never treat it as a saved playlist.
+                - For "从播放列表/播放队列移除/删除 X", use REMOVE_TRACK_FROM_QUEUE.
+                - For "清空播放列表/播放队列", use CLEAR_QUEUE.
                 - Never call more than one capability. Pick the primary safe action.
                 - Keep query short and searchable. Preserve artist names and song titles.
                 - If unsure whether a target playlist exists, still extract its name and let the executor resolve it.
@@ -221,7 +225,10 @@ public class DefaultAgentAiService implements AgentAiService {
                         "pause playback",
                         "skip tracks",
                         "create, rename, or delete playlists",
-                        "add tracks to playlists or queue"
+                        "add tracks to playlists or queue",
+                        "remove tracks from queue",
+                        "clear the queue",
+                        "move queued tracks to next up"
                       ]
                     }
 

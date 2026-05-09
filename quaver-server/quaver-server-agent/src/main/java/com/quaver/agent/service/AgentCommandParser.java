@@ -25,7 +25,7 @@ public class AgentCommandParser {
     private static final Pattern PLAYLIST_BY_NAME_EN = Pattern.compile(
             "(?i)(?:play|open)\\s+(?:playlist\\s+)(.+)");
     private static final Pattern PLAYLIST_BY_NAME_ZH = Pattern.compile(
-            "(?:播放|打开)\\s*(?:歌单|列表)\\s*(.+)");
+            "(?:播放|打开)\\s*歌单\\s*(.+)");
 
     public ParsedAgentCommand parse(String content) {
         String normalized = content == null ? "" : content.trim();
@@ -34,6 +34,16 @@ public class AgentCommandParser {
         ParsedAgentCommand rename = parseRenamePlaylist(normalized);
         if (rename != null) {
             return rename;
+        }
+
+        if (isQueueClear(normalized, lowered)) {
+            return new ParsedAgentCommand(AgentIntent.CLEAR_QUEUE, "");
+        }
+
+        if (isQueueRemoval(normalized, lowered)) {
+            String query = cleanTrackQuery(removeQueueRemovalWords(normalized));
+            return new ParsedAgentCommand(AgentIntent.REMOVE_TRACK_FROM_QUEUE, query,
+                    Map.of(SELECTION_MODE, SELECTION_SINGLE));
         }
 
         if (isQueueAppend(normalized, lowered)) {
@@ -162,12 +172,23 @@ public class AgentCommandParser {
     }
 
     private boolean isQueueAppend(String content, String lowered) {
-        return containsAny(lowered, "queue", "队列", "播放队列", "播放列表")
+        return containsQueueWord(lowered)
                 && containsAny(lowered, "add", "append", "加入", "添加", "加到", "放进");
     }
 
     private boolean isInsertNext(String content, String lowered) {
-        return containsAny(lowered, "next up", "insert next", "play next", "下一首播放", "下首播放", "插到下一首");
+        return containsAny(lowered, "next up", "insert next", "play next", "move to front",
+                "下一首播放", "下首播放", "插到下一首", "移到最前", "移至最前", "放到最前", "置顶播放");
+    }
+
+    private boolean isQueueRemoval(String content, String lowered) {
+        return containsQueueWord(lowered)
+                && containsAny(lowered, "remove", "delete", "移除", "移出", "删掉", "删除");
+    }
+
+    private boolean isQueueClear(String content, String lowered) {
+        return containsQueueWord(lowered)
+                && containsAny(lowered, "clear", "empty", "清空", "清除", "清掉", "全部移除", "全部删除");
     }
 
     private boolean isPlayRequest(String content, String lowered) {
@@ -181,7 +202,12 @@ public class AgentCommandParser {
 
     private boolean containsPlaylistWord(String content) {
         String lowered = content.toLowerCase();
-        return containsAny(lowered, "playlist", "歌单", "列表");
+        return containsAny(lowered, "playlist", "歌单")
+                || (lowered.contains("列表") && !containsQueueWord(lowered));
+    }
+
+    private boolean containsQueueWord(String lowered) {
+        return containsAny(lowered, "queue", "队列", "播放队列", "播放列表");
     }
 
     private String removeCreatePlaylistWords(String content) {
@@ -209,11 +235,27 @@ public class AgentCommandParser {
 
     private String removeQueueWords(String content) {
         return content
-                .replaceAll("(?i)add|append|queue", "")
+                .replaceAll("(?i)add|append|to|into|queue", "")
                 .replace("加入", "")
                 .replace("添加", "")
                 .replace("加到", "")
                 .replace("放进", "")
+                .replace("到", "")
+                .replace("播放队列", "")
+                .replace("播放列表", "")
+                .replace("队列", "")
+                .trim();
+    }
+
+    private String removeQueueRemovalWords(String content) {
+        return content
+                .replaceAll("(?i)remove|delete|from|queue", "")
+                .replace("移除", "")
+                .replace("移出", "")
+                .replace("删掉", "")
+                .replace("删除", "")
+                .replace("从", "")
+                .replace("里", "")
                 .replace("播放队列", "")
                 .replace("播放列表", "")
                 .replace("队列", "")
@@ -222,10 +264,14 @@ public class AgentCommandParser {
 
     private String removeInsertNextWords(String content) {
         return content
-                .replaceAll("(?i)next up|insert next|play next", "")
+                .replaceAll("(?i)next up|insert next|play next|move to front", "")
                 .replace("下一首播放", "")
                 .replace("下首播放", "")
                 .replace("插到下一首", "")
+                .replace("移到最前", "")
+                .replace("移至最前", "")
+                .replace("放到最前", "")
+                .replace("置顶播放", "")
                 .trim();
     }
 
@@ -271,14 +317,18 @@ public class AgentCommandParser {
     private String cleanPlaylistName(String value) {
         return stripWrappingPunctuation(value)
                 .replaceAll("(?i)^playlist\\s+", "")
+                .replaceAll("^(请|帮我|麻烦)\\s*", "")
+                .replaceAll("^(一个|一份)?(叫做|叫|名为|名称为|为)\\s*", "")
                 .replaceAll("^(歌单|列表)\\s*", "")
                 .replaceAll("\\s*(歌单|列表)$", "")
+                .replaceAll("的$", "")
                 .trim();
     }
 
     private String cleanTrackQuery(String value) {
         return stripWrappingPunctuation(value)
                 .replaceAll("(?i)^track\\s+", "")
+                .replaceAll("^(请|帮我|麻烦|把|将)\\s*", "")
                 .trim();
     }
 
